@@ -1,5 +1,6 @@
 import re
 import tempfile
+import asyncio
 from collections import defaultdict
 from pathlib import Path
 
@@ -17,6 +18,7 @@ class ManosabaMemesPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
         self.character_map = defaultdict(lambda: get_character("艾玛"))
+        self.face_whitelist = {"害羞", "生气", "病娇", "无语", "开心"}
 
     async def initialize(self):
         """插件初始化方法"""
@@ -38,21 +40,29 @@ class ManosabaMemesPlugin(Star):
         
         text = parts[1]
         face = parts[2] if len(parts) > 2 else None
+        
+        if face is not None and face not in self.face_whitelist:
+            yield event.plain_result(f"表情 {face} 无效，可选表情：{', '.join(self.face_whitelist)}")
+            return
+        
         text = text.replace("\\n", "\n")
         
         try:
-            image_bytes = draw_anan(text, face)
+            loop = asyncio.get_event_loop()
+            image_bytes = await loop.run_in_executor(None, draw_anan, text, face)
             with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as f:
                 f.write(image_bytes)
                 temp_path = f.name
-            yield event.image_result(temp_path)
-            Path(temp_path).unlink(missing_ok=True)
+            try:
+                yield event.image_result(temp_path)
+            finally:
+                Path(temp_path).unlink(missing_ok=True)
         except Exception as e:
             logger.error(f"生成安安说话图片失败: {e}")
             yield event.plain_result(f"生成图片失败: {str(e)}")
 
     @filter.regex(r"^【(疑问|反驳|伪证|赞同|魔法)(?:[:：]([^】]*))?】(.+)$", flags=re.MULTILINE)
-    async def handle_trail(self, event: AstrMessageEvent):
+    async def handle_trial(self, event: AstrMessageEvent):
         """生成审判表情包
         
         用法: 【疑问/反驳/伪证/赞同/魔法:[角色名]】这是一个选项文本
@@ -70,8 +80,9 @@ class ManosabaMemesPlugin(Star):
         for statement_type, arg, text in matches:
             try:
                 statement_enum = get_statement(statement_type, arg)
-            except (KeyError, AssertionError):
-                if arg:
+            except (KeyError, ValueError) as e:
+                error_msg = str(e)
+                if "角色" in error_msg or arg not in [None, ""]:
                     yield event.plain_result(
                         f"角色 {arg} 无效，请从以下选项中选择："
                         "梅露露, 诺亚, 汉娜, 奈叶香, 亚里沙, 米莉亚, 雪莉, 艾玛, 玛格, 安安, 可可, 希罗, 蕾雅"
@@ -86,12 +97,17 @@ class ManosabaMemesPlugin(Star):
             options.append(Option(statement_enum, text))
 
         try:
-            image_bytes = draw_trial(self.character_map[event.get_session_id()], options)
+            loop = asyncio.get_event_loop()
+            image_bytes = await loop.run_in_executor(
+                None, draw_trial, self.character_map[event.get_session_id()], options
+            )
             with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as f:
                 f.write(image_bytes)
                 temp_path = f.name
-            yield event.image_result(temp_path)
-            Path(temp_path).unlink(missing_ok=True)
+            try:
+                yield event.image_result(temp_path)
+            finally:
+                Path(temp_path).unlink(missing_ok=True)
         except OverflowError:
             yield event.plain_result("选项过多，请减少选项数量")
         except Exception as e:

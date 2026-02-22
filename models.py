@@ -8,18 +8,18 @@ class StrEnum(str, Enum):
 
 
 class Character(StrEnum):
-    """Characters available for trail drawing"""
+    """Characters available for trial drawing"""
 
     EMA = "Ema"
     HIRO = "Hiro"
 
 
 class Statement(StrEnum):
-    """Types of statements for the trail drawing"""
+    """Types of statements for the trial drawing"""
 
     AGREEMENT = "Agreement"
     DOUBT = "Doubt"
-    PURJURY = "Perjury"
+    PERJURY = "Perjury"
     REFUTATION = "Refutation"
     MAGIC_CHIYUSAISEI = "Magic Chiyu & Saisei"
     MAGIC_EKITAISOUSA = "Magic Ekitai Sousa"
@@ -40,7 +40,7 @@ class Option:
     """A trial option for a character to say"""
 
     def __init__(self, statement: Statement, text: str) -> None:
-        """Initialize a trail option
+        """Initialize a trial option
 
         Args:
             statement (Statement): The type of statement this option represents

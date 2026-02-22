@@ -11,7 +11,14 @@ def get_magic_statement(text: str) -> Statement:
 
     Returns:
         Statement: The corresponding Statement enum
+        
+    Raises:
+        KeyError: If text is not a valid magic character name
+        ValueError: If text is empty or None
     """
+    if not text or not text.strip():
+        raise ValueError("Magic character name cannot be empty")
+    
     mapping = {
         "梅露露": Statement.MAGIC_CHIYUSAISEI,
         "诺亚": Statement.MAGIC_EKITAISOUSA,
@@ -39,6 +46,9 @@ def get_statement(statement: str, arg: Optional[str] = None) -> Statement:
 
     Returns:
         Statement: The corresponding Statement enum
+        
+    Raises:
+        ValueError: If statement type is invalid or arg is missing for magic type
     """
     match statement:
         case "赞同":
@@ -46,13 +56,15 @@ def get_statement(statement: str, arg: Optional[str] = None) -> Statement:
         case "疑问":
             return Statement.DOUBT
         case "伪证":
-            return Statement.PURJURY
+            return Statement.PERJURY
         case "反驳":
             return Statement.REFUTATION
         case "魔法":
+            if not arg or not arg.strip():
+                raise ValueError("魔法类型需要指定角色名，格式：魔法:角色名")
             return get_magic_statement(arg)
         case _:
-            assert False, "Invalid statement type"
+            raise ValueError(f"无效的陈述类型: {statement}")
 
 
 def get_character(character: str) -> Character:
