@@ -1,0 +1,144 @@
+name: Release Build
+
+# 触发条件：推送到 main 分支时触发或手动触发
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:  # 允许手动触发
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write  # REQUIRED for signing
+
+    steps:
+      # 0. 安全加固
+      - name: Harden Runner
+        uses: step-security/harden-runner@c6295a65d1254861815972266d5933fd6e532bdf # v2.11.1
+        with:
+          egress-policy: audit
+
+      # 1. 检出代码
+      - name: Checkout code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-depth: 0  # 获取完整的 git 历史
+
+      # 2. 设置 Python 环境
+      - name: Set up Python
+        uses: actions/setup-python@7f4fc3e22c37d6ff65e88745f38bd3157c663f7c # v4.9.1
+        with:
+          python-version: '3.14'
+
+      # 3. 获取版本号
+      - name: Get version
+        id: get_version
+        run: |
+          # 从 metadata.yaml 文件中读取版本号
+          VERSION=$(grep "^version:" metadata.yaml | awk '{print $2}')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag_name=$VERSION" >> $GITHUB_OUTPUT
+
+      # 4. 安装依赖
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      # 5. 创建插件目录
+      - name: Create plugin directory
+        run: |
+          mkdir -p astrbot_plugin_treasure_bag
+
+      # 6. 复制插件文件到构建目录
+      - name: Copy plugin files
+        run: |
+          # 复制主程序文件
+          cp main.py astrbot_plugin_treasure_bag/
+          # 复制配置文件和依赖文件
+          cp metadata.yaml requirements.txt astrbot_plugin_treasure_bag/ || true
+          # 复制所有处理器文件
+          cp *_handler.py command_utils.py astrbot_plugin_treasure_bag/ || true
+          # 复制 logo 文件
+          cp logo.png astrbot_plugin_treasure_bag/ || true
+          # 复制子目录
+          cp -r baidu astrbot_plugin_treasure_bag/ || true
+
+      # 7. 打包为 zip 文件
+      - name: Create zip package
+        run: |
+          zip -r astrbot_plugin_treasure_bag.zip astrbot_plugin_treasure_bag/
+
+      # 8. 生成 Release Notes
+      - name: Generate Release Notes
+        id: release_notes
+        run: |
+          # 从上一个标签生成 Release Notes
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          VERSION=${GITHUB_REF#refs/tags/v}
+
+          if [ -z "$PREVIOUS_TAG" ]; then
+            NOTES="## 🎉 首次发布\n\n这是 AstrBot 百宝袋插件的首次正式发布。"
+          else
+            # 生成更新日志，移除 commit 类型前缀（如 feat:, fix: 等）
+            COMMITS=$(git log ${PREVIOUS_TAG}..HEAD --pretty=format:"- %s" --no-merges | sed 's/^[a-z]*: //')
+            NOTES="## 📝 更新日志\n\n### 本次更新了\n\n$COMMITS"
+          fi
+
+          # 保存到文件
+          echo "$NOTES" > release_notes.md
+
+          # 输出到环境变量
+          {
+            echo 'notes<<EOF'
+            cat release_notes.md
+            echo EOF
+          } >> $GITHUB_OUTPUT
+
+      # 9. 生成证据包
+      - name: Generate Evidence Bundle
+        if: always()  # Run even if build fails
+        uses: OrygnsCode/ci-evidence-pack@8222d7b3b015ce2f72222215bdf9966773036ab1 # main
+        with:
+          sign: 'true'
+
+      # 10. 创建 GitHub Release
+      - name: Create Release
+        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
+        with:
+          tag_name: ${{ steps.get_version.outputs.tag_name }}
+          name: Release ${{ steps.get_version.outputs.version }}
+          body: |
+            ${{ steps.release_notes.outputs.notes }}
+
+            ---
+
+            ## 📦 证据包说明
+
+            本 Release 包含以下文件：
+
+            - **astrbot_plugin_treasure_bag-*.zip**: 插件安装包
+            - **evidence-bundle.tar.gz**: CI 证据包（包含源代码、Git 元数据、依赖项、SBOM 等）
+            - **evidence-bundle.tar.gz.sig**: 证据包的 Sigstore 签名
+            - **evidence-bundle.tar.gz.crt**: 证据包的签名证书
+
+            证据包用于合规性审计和构建验证，可以使用以下命令验证：
+
+            ```bash
+            ci-evidence-pack verify evidence-bundle.tar.gz
+            ```
+          draft: false
+          prerelease: false
+          files: |
+            astrbot_plugin_treasure_bag.zip
+            _evidence_dist/*.tar.gz
+            _evidence_dist/*.sig
+            _evidence_dist/*.crt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

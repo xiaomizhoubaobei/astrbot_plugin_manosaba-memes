@@ -1,0 +1,82 @@
+$:
+    vscode:
+        - docker:
+            image: docker.cnb.cool/xmzzuzhi/cnb-docker/python:0.0.1
+          imports:
+            - https://cnb.cool/XMZZUZHI/key/-/blob/main/Claude.yml
+          runner:
+            cpus: 32
+          services:
+            - vscode
+            - docker
+          stages:
+              - name: 授予install_gpg_keys.sh权限
+                script:
+                    - chmod +x /workspace/install_gpg_keys.sh
+              - name: 安装iflow CLI
+                script:
+                    - npm i -g @iflow-ai/iflow-cli@latest
+                    - echo "iflow CLI安装完成"
+              - name: 安装claude CLI
+                script:
+                    - npm install -g @anthropic-ai/claude-code
+                    - echo "claude CLI安装完成"
+              - name: 安装qwen CLI
+                script:
+                    - npm install -g @qwen-code/qwen-code@latest
+                    - echo "qwen CLI安装完成"
+              - name: 安装CodeBuddy CLI
+                script:
+                    - npm install -g @tencent-ai/codebuddy-code
+                    - echo "CodeBuddy CLI安装完成"
+              - name: 安装KIMI code
+                script:
+                    - curl -LsSf https://code.kimi.com/install.sh | bash
+                    - echo "KIMI code安装完成"
+              - name: 安装Qoder CLI
+                script:
+                  - curl -fsSL https://qoder.com/install | bash
+                  - echo "Qoder CLI安装完成"
+              - name: 安装sudo更新APT源
+                script:
+                    - sudo apt-get update
+                    - sudo apt-get install -y lsof net-tools jq
+                    - echo "依赖完成"
+              - name: 安装Git LFS
+                script:
+                    - sudo apt-get install -y git-lfs
+                    - git lfs install
+                    - echo "Git LFS安装完成"
+              - name: 下载并替换settings.json
+                script:
+                    - mkdir -p /root/.iflow
+                    - curl -o /root/.iflow/settings.json https://cnb-1329111128.cos.ap-guangzhou.myqcloud.com/1.json
+                    - echo "已下载并替换 /root/.iflow/settings.json"
+              - name: 安装iflow智能体
+                script:
+                    - chmod +x /workspace/install_agents.sh
+                    - /workspace/install_agents.sh
+              - name: 克隆Astrbot并重新克隆
+                script:
+                  - git clone https://github.com/AstrBotDevs/AstrBot.git /tmp/astrbot-tmp
+                  - cp -r /tmp/astrbot-tmp/astrbot /workspace
+                  - rm -rf /tmp/astrbot-tmp
+                  - git clone https://github.com/AstrBotDevs/AstrBot.git
+
+main:
+      push:
+        - services:
+            - docker
+          imports:
+            - https://cnb.cool/XMZZUZHI/key/-/blob/main/Github.yml
+          stages:
+            - name: 同步到GitHub
+              image: tencentcom/git-sync 
+              settings:
+                target_url: https://github.com/xiaomizhoubaobei/astrbot_plugin_manosaba-memes.git
+                auth_type: https
+                username: ${GIT_USERNAME} 
+                password: ${GIT_ACCESS_TOKEN}
+                branch: main
+                git_user: ${GIT_USERNAME}
+                git_email: ${GIT_EMAIL}

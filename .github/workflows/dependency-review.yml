@@ -1,0 +1,43 @@
+# 依赖项审查操作
+#
+# 此操作将扫描作为拉取请求一部分更改的依赖项清单文件，
+# 揭示在 PR 中声明或更新的包的已知易受攻击版本。
+# 安装后，如果工作流运行被标记为必需，则引入已知易受攻击
+# 包的 PR 将被阻止合并。
+#
+# 源仓库: `https://github.com/actions/dependency-review-action`
+# 公共文档: `https://docs.github.com/en/code-security/supply-chain-security/understanding-your-software-supply-chain/about-dependency-review#dependency-review-enforcement`
+name: '依赖项审查'
+on:
+  pull_request:
+    branches: [ "main" ]
+
+# 如果在此工作流中使用依赖项提交操作，则需要将此权限设置为:
+#
+# permissions:
+#   contents: write
+#
+# `https://docs.github.com/en/enterprise-cloud@latest/code-security/supply-chain-security/understanding-your-software-supply-chain/using-the-dependency-submission-api`
+permissions:
+  contents: read
+  # 使用 `comment-summary-in-pr` 选项需要对拉取请求具有写入权限，如果您不使用此选项，请注释掉
+  pull-requests: write
+
+jobs:
+  dependency-review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@5ef0c079ce82195b2a36a210272d6b661572d83e # v2.14.2
+        with:
+          egress-policy: audit
+      - name: '检出仓库'
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - name: '依赖项审查'
+        uses: actions/dependency-review-action@05fe4576374b728f0c523d6a13d64c25081e0803 # v4.8.3
+        # 常用的启用选项，有关所有可用选项，请参阅 `https://github.com/actions/dependency-review-action#configuration-options`
+        with:
+          comment-summary-in-pr: always
+          fail-on-severity: moderate
+        #   deny-licenses: GPL-1.0-or-later, LGPL-2.0-or-later
+          retry-on-snapshot-warnings: true
