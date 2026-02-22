@@ -1,14 +1,15 @@
 import re
 import tempfile
 import asyncio
+import json
 from collections import defaultdict
 from pathlib import Path
 
 from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
-from astrbot.api.star import Context, Star, register
+from astrbot.api.star import Context, Star, register, StarTools
 from astrbot.api import logger
 
-from .models import Option
+from .models import Option, Character
 from .drawer import draw_anan, draw_trial
 from .utils import get_statement, get_character
 
@@ -17,12 +18,54 @@ from .utils import get_statement, get_character
 class ManosabaMemesPlugin(Star):
     def __init__(self, context: Context):
         super().__init__(context)
-        self.character_map = defaultdict(lambda: get_character("艾玛"))
+        self.character_map = defaultdict(lambda: Character.EMA)
         self.face_whitelist = {"害羞", "生气", "病娇", "无语", "开心"}
+        self.data_file = None  # 将在 initialize 中设置
 
     async def initialize(self):
         """插件初始化方法"""
+        # 获取插件数据目录
+        data_dir = StarTools.get_data_dir()
+        self.data_file = data_dir / "character_preferences.json"
+        
+        # 确保数据目录存在
+        data_dir.mkdir(parents=True, exist_ok=True)
+        
+        # 加载用户角色偏好
+        await self._load_character_preferences()
+        
         logger.info("魔裁 Memes 插件已加载")
+
+    async def _load_character_preferences(self):
+        """从文件加载用户角色偏好"""
+        try:
+            if self.data_file and self.data_file.exists():
+                with open(self.data_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    for session_id, character_name in data.items():
+                        try:
+                            self.character_map[session_id] = get_character(character_name)
+                        except ValueError:
+                            # 忽略无效的角色名，使用默认值
+                            logger.warning(f"加载角色偏好失败: 无效的角色名 {character_name}")
+                logger.info(f"已加载 {len(self.character_map)} 个用户的角色偏好")
+        except Exception as e:
+            logger.error(f"加载角色偏好失败: {e}")
+
+    async def _save_character_preferences(self):
+        """保存用户角色偏好到文件"""
+        try:
+            if self.data_file:
+                # 将 Character 枚举转换为字符串
+                data = {
+                    session_id: character.value
+                    for session_id, character in self.character_map.items()
+                }
+                with open(self.data_file, 'w', encoding='utf-8') as f:
+                    json.dump(data, f, ensure_ascii=False, indent=2)
+                logger.debug(f"已保存 {len(self.character_map)} 个用户的角色偏好")
+        except Exception as e:
+            logger.error(f"保存角色偏好失败: {e}")
 
     @filter.command("安安说", alias={"anan说", "anansays"})
     async def handle_anan_says(self, event: AstrMessageEvent):
@@ -80,20 +123,10 @@ class ManosabaMemesPlugin(Star):
         for statement_type, arg, text in matches:
             try:
                 statement_enum = get_statement(statement_type, arg)
-            except (KeyError, ValueError) as e:
-                error_msg = str(e)
-                if "角色" in error_msg or arg not in [None, ""]:
-                    yield event.plain_result(
-                        f"角色 {arg} 无效，请从以下选项中选择："
-                        "梅露露, 诺亚, 汉娜, 奈叶香, 亚里沙, 米莉亚, 雪莉, 艾玛, 玛格, 安安, 可可, 希罗, 蕾雅"
-                    )
-                    return
-                else:
-                    yield event.plain_result(
-                        "魔法类型无效，请输入【魔法:角色】格式。可选的角色有："
-                        "梅露露, 诺亚, 汉娜, 奈叶香, 亚里沙, 米莉亚, 雪莉, 艾玛, 玛格, 安安, 可可, 希罗, 蕾雅"
-                    )
-                    return
+            except ValueError as e:
+                # 直接显示 utils.py 返回的清晰错误信息
+                yield event.plain_result(str(e))
+                return
             options.append(Option(statement_enum, text))
 
         try:
@@ -130,12 +163,14 @@ class ManosabaMemesPlugin(Star):
         
         character_name = parts[1]
         try:
-            self.character_map[event.get_session_id()] = get_character(character_name)
+            character = get_character(character_name)
+            self.character_map[event.get_session_id()] = character
+            # 保存用户偏好
+            await self._save_character_preferences()
             yield event.plain_result(f"已切换角色为 {character_name}")
-        except KeyError:
-            yield event.plain_result(
-                f"角色名 {character_name} 无效，请选择 艾玛 或 希罗"
-            )
+        except ValueError as e:
+            # 直接显示 utils.py 返回的清晰错误信息
+            yield event.plain_result(str(e))
 
     @filter.command("魔裁帮助", alias={"manosaba帮助", "魔裁help"})
     async def handle_help(self, event: AstrMessageEvent):
@@ -162,16 +197,19 @@ class ManosabaMemesPlugin(Star):
 
 3️⃣ 切换角色
 用法: 切换角色 [角色名]
-说明: 切换审判表情包中的角色
+说明: 切换审判表情包中的角色（自动保存）
 角色可选: 艾玛, 希罗
 示例: 切换角色 希罗
 
 💡 小贴士:
 • 在文本中输入 \\n 可以换行
 • 中括号【】中的内容会被渲染成紫色
-• 选项数量建议 3 条以内效果最佳"""
+• 选项数量建议 3 条以内效果最佳
+• 角色选择会自动保存，重启后依然有效"""
         yield event.plain_result(help_text)
 
     async def terminate(self):
         """插件销毁方法"""
+        # 保存用户偏好
+        await self._save_character_preferences()
         logger.info("魔裁 Memes 插件已卸载")

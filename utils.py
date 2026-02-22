@@ -13,8 +13,7 @@ def get_magic_statement(text: str) -> Statement:
         Statement: The corresponding Statement enum
         
     Raises:
-        KeyError: If text is not a valid magic character name
-        ValueError: If text is empty or None
+        ValueError: If text is empty or not a valid magic character name
     """
     if not text or not text.strip():
         raise ValueError("Magic character name cannot be empty")
@@ -34,7 +33,15 @@ def get_magic_statement(text: str) -> Statement:
         "希罗": Statement.MAGIC_SHINIMODORI,
         "蕾雅": Statement.MAGIC_SHISENYUUDOU,
     }
-    return mapping[text]
+    
+    # 使用 .get() 方法，如果键不存在则抛出清晰的 ValueError
+    result = mapping.get(text)
+    if result is None:
+        raise ValueError(
+            f"无效的角色 '{text}'，请从以下选项中选择："
+            "梅露露, 诺亚, 汉娜, 奈叶香, 亚里沙, 米莉亚, 雪莉, 艾玛, 玛格, 安安, 可可, 希罗, 蕾雅"
+        )
+    return result
 
 
 def get_statement(statement: str, arg: Optional[str] = None) -> Statement:
@@ -75,9 +82,19 @@ def get_character(character: str) -> Character:
 
     Returns:
         Character: The corresponding Character enum
+        
+    Raises:
+        ValueError: If character name is invalid
     """
     mapping = {
         "艾玛": Character.EMA,
         "希罗": Character.HIRO,
     }
-    return mapping[character]
+    
+    # 使用 .get() 方法，如果键不存在则抛出清晰的 ValueError
+    result = mapping.get(character)
+    if result is None:
+        raise ValueError(
+            f"无效的角色 '{character}'，请从以下选项中选择：艾玛, 希罗"
+        )
+    return result
