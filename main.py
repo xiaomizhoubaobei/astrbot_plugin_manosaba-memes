@@ -5,7 +5,7 @@ import json
 from collections import defaultdict
 from pathlib import Path
 
-from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
+from astrbot.api.event import filter, AstrMessageEvent
 from astrbot.api.star import Context, Star, StarTools
 from astrbot.api import logger
 
@@ -90,24 +90,32 @@ class ManosabaMemesPlugin(Star):
     @filter.command("安安说", alias={"anan说", "anansays"})
     async def handle_anan_says(self, event: AstrMessageEvent):
         """让安安说话的插件
-        
+
         用法: 安安说 [文本] [表情]
         表情可选: 害羞, 生气, 病娇, 无语, 开心
         """
         message_str = event.message_str
-        parts = message_str.split(maxsplit=2)
-        
+        parts = message_str.split(maxsplit=1)
+
         if len(parts) < 2:
             yield event.plain_result("请输入文本。用法: 安安说 [文本] [表情]")
             return
-        
-        text = parts[1]
-        face = parts[2] if len(parts) > 2 else None
-        
-        if face is not None and face not in FACE_WHITELIST:
-            yield event.plain_result(f"表情 {face} 无效，可选表情：{', '.join(FACE_WHITELIST)}")
-            return
-        
+
+        content = parts[1].strip()
+        # 尝试从右向左查找最后一个空格作为表情的分隔符
+        last_space_idx = content.rfind(' ')
+        if last_space_idx != -1:
+            potential_face = content[last_space_idx + 1:].strip()
+            if potential_face in FACE_WHITELIST:
+                text = content[:last_space_idx]
+                face = potential_face
+            else:
+                text = content
+                face = None
+        else:
+            text = content
+            face = None
+
         text = text.replace("\\n", "\n")
         
         try:
@@ -124,19 +132,19 @@ class ManosabaMemesPlugin(Star):
             logger.error(f"生成安安说话图片失败: {e}")
             yield event.plain_result(f"生成图片失败: {str(e)}")
 
-    @filter.regex(r"^【(疑问|反驳|伪证/赞同|魔法)(?:[:：]([^】]*))?】(.+)$", flags=re.MULTILINE)
+    @filter.regex(r"^【(疑问|反驳|伪证|赞同|魔法)(?:[:：]([^】]*))?】(.+)$", flags=re.MULTILINE)
     async def handle_trial(self, event: AstrMessageEvent):
         """生成审判表情包
-        
+
         用法: 【疑问/反驳/伪证/赞同/魔法:[角色名]】这是一个选项文本
         角色名可选: 梅露露, 诺亚, 汉娜, 奈叶香, 亚里沙, 米莉亚, 雪莉, 艾玛, 玛格, 安安, 可可, 希罗, 蕾雅
         可发送多行以添加多个选项
-        
+
         注意：最多支持 10 个选项
         """
         message_str = event.message_str
         matches = re.findall(
-            r"^【(疑问|反驳|伪证/赞同|魔法)(?:[:：]([^】]*))?】(.+)$",
+            r"^【(疑问|反驳|伪证|赞同|魔法)(?:[:：]([^】]*))?】(.+)$",
             message_str,
             flags=re.M,
         )
@@ -145,11 +153,11 @@ class ManosabaMemesPlugin(Star):
         for statement_type, arg, text in matches:
             try:
                 statement_enum = get_statement(statement_type, arg)
+                options.append(Option(statement_enum, text))
             except ValueError as e:
                 # 直接显示 utils.py 返回的清晰错误信息
                 yield event.plain_result(str(e))
                 return
-            options.append(Option(statement_enum, text))
 
         # 前置校验：检查选项数量
         if len(options) > MAX_OPTIONS_COUNT:
