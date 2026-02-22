@@ -11,50 +11,36 @@ from sketchbook import (
 )
 
 from .models import Character, Option, Statement
+from .constants import (
+    FACE_WHITELIST,
+    TRIAL_IMAGE_WIDTH,
+    TRIAL_IMAGE_HEIGHT,
+    OPTION_WIDTH,
+    OPTION_HEIGHT,
+    OPTION_START_X,
+    OPTION_START_Y,
+    OPTION_END_Y,
+    MAX_PADDING,
+    MAX_OPTIONS_COUNT,
+    STATEMENT_ICON_WIDTH,
+    STATEMENT_ICON_HEIGHT,
+    STATEMENT_OFFSET_X,
+    STATEMENT_OFFSET_Y,
+    TEXT_OFFSET_X,
+    TEXT_OFFSET_Y,
+    TEXT_WIDTH,
+    TEXT_HEIGHT,
+    MAX_FONT_HEIGHT,
+    TEXT_COLOR,
+    BRACKET_COLOR,
+    ANAN_REGION_X,
+    ANAN_REGION_Y,
+    ANAN_REGION_WIDTH,
+    ANAN_REGION_HEIGHT,
+)
 
 
 PLUGIN_PATH = Path(__file__).parent
-
-# 允许的表情白名单，用于防止路径遍历攻击
-FACE_WHITELIST = {"害羞", "生气", "病娇", "无语", "开心"}
-
-# 审判界面布局常量
-# 图片尺寸
-TRIAL_IMAGE_WIDTH = 1260
-TRIAL_IMAGE_HEIGHT = 1080
-
-# 选项框尺寸
-OPTION_WIDTH = 802
-OPTION_HEIGHT = 216
-OPTION_START_X = 29
-OPTION_START_Y = 364
-OPTION_END_Y = 780
-
-# 最大间距（像素）
-MAX_PADDING = 286
-
-# 声明图标尺寸
-STATEMENT_ICON_WIDTH = 146
-STATEMENT_ICON_HEIGHT = 128
-STATEMENT_OFFSET_X = 21
-STATEMENT_OFFSET_Y = -43
-
-# 文本区域偏移
-TEXT_OFFSET_X = 109
-TEXT_OFFSET_Y = 32
-TEXT_WIDTH = 589
-TEXT_HEIGHT = 150
-MAX_FONT_HEIGHT = 48
-
-# 文本颜色
-TEXT_COLOR = (39, 33, 30, 255)
-BRACKET_COLOR = (39, 33, 30, 255)
-
-# 安安说话区域常量
-ANAN_REGION_X = 100
-ANAN_REGION_Y = 432
-ANAN_REGION_WIDTH = 319
-ANAN_REGION_HEIGHT = 204
 
 
 def get_anan_base_image(face: Optional[str] = None) -> str:
@@ -121,6 +107,9 @@ def get_statement_image(statement: Statement) -> str:
 
     Returns:
         str: The path to the statement image
+        
+    Raises:
+        ValueError: If statement type is not recognized
     """
     mapping = {
         Statement.AGREEMENT: "agreement.png",
@@ -141,7 +130,13 @@ def get_statement_image(statement: Statement) -> str:
         Statement.MAGIC_SHINIMODORI: "magic_shinimodori.png",
         Statement.MAGIC_SHISENYUUDOU: "magic_shisenyuudou.png",
     }
-    return str(PLUGIN_PATH / "assets/trial" / mapping[statement])
+    
+    # 使用 .get() 方法，避免直接索引可能引发的 KeyError
+    image_file = mapping.get(statement)
+    if image_file is None:
+        raise ValueError(f"未知的陈述类型: {statement}")
+    
+    return str(PLUGIN_PATH / "assets/trial" / image_file)
 
 
 def get_option_coordinates(number: int) -> List[Tuple[int, int]]:
@@ -158,7 +153,17 @@ def get_option_coordinates(number: int) -> List[Tuple[int, int]]:
 
     Returns:
         List[Tuple[int, int]]: A list of (x, y) coordinates for each option
+        
+    Raises:
+        ValueError: If number of options exceeds the maximum limit
     """
+    # 前置校验：确保选项数量在合理范围内
+    if number > MAX_OPTIONS_COUNT:
+        raise ValueError(f"选项数量过多，最多支持 {MAX_OPTIONS_COUNT} 个选项")
+    
+    if number <= 0:
+        raise ValueError("选项数量必须大于 0")
+    
     available_height = OPTION_END_Y - OPTION_START_Y - OPTION_HEIGHT
     
     if number % 2 == 1:
@@ -209,7 +214,7 @@ def get_option_coordinates(number: int) -> List[Tuple[int, int]]:
         ]
 
 
-def draw_trial(character: Character, options: List[Option]):
+def draw_trial(character: Character, options: List[Option]) -> bytes:
     """Draw the trial image for a character saying an option
 
     Args:
@@ -218,7 +223,17 @@ def draw_trial(character: Character, options: List[Option]):
 
     Returns:
         bytes: The image bytes of the drawn image
+        
+    Raises:
+        ValueError: If options count exceeds maximum limit
     """
+    # 前置校验：确保选项数量在合理范围内
+    if len(options) > MAX_OPTIONS_COUNT:
+        raise ValueError(f"选项数量过多，最多支持 {MAX_OPTIONS_COUNT} 个选项")
+    
+    if len(options) == 0:
+        raise ValueError("选项数量不能为 0")
+    
     # Background and character
     drawer = Drawer(
         base_image=str(PLUGIN_PATH / "assets/trial/black.png"),

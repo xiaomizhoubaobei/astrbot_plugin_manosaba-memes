@@ -6,20 +6,40 @@ from collections import defaultdict
 from pathlib import Path
 
 from astrbot.api.event import filter, AstrMessageEvent, MessageEventResult
-from astrbot.api.star import Context, Star, register, StarTools
+from astrbot.api.star import Context, Star, StarTools
 from astrbot.api import logger
 
 from .models import Option, Character
-from .drawer import draw_anan, draw_trial
+from .drawer import draw_anan, draw_trial, MAX_OPTIONS_COUNT
 from .utils import get_statement, get_character
+from .constants import FACE_WHITELIST
 
 
-@register("manosaba-memes", "祁筱欣", "生成「魔法少女的魔法审判」的表情包", "0.0.1", "https://github.com/xiaomizhoubaobei/astrbot_plugin_manosaba-memes")
 class ManosabaMemesPlugin(Star):
+    """生成「魔法少女的魔法审判」的表情包插件
+    
+    指令列表：
+    • 安安说 - 让安安举着写了你想说的话的素描本
+      用法: 安安说 [文本] [表情]
+      表情可选: 害羞, 生气, 病娇, 无语, 开心
+      别名: anan说, anansays
+    
+    • 审判表情包 - 生成审判时的选项图片
+      用法: 【疑问/反驳/伪证/赞同/魔法:[角色名]】[文本]
+      类型: 疑问, 反驳, 伪证, 赞同, 魔法
+      魔法角色: 梅露露, 诺亚, 汉娜, 奈叶香, 亚里沙, 米莉亚, 雪莉, 艾玛, 玛格, 安安, 可可, 希罗, 蕾雅
+    
+    • 切换角色 - 切换审判表情包中的角色（自动保存）
+      用法: 切换角色 [角色名]
+      角色可选: 艾玛, 希罗
+    
+    • 魔裁帮助 - 显示插件帮助信息
+      别名: manosaba帮助, 魔裁help
+    """
+    
     def __init__(self, context: Context):
         super().__init__(context)
         self.character_map = defaultdict(lambda: Character.EMA)
-        self.face_whitelist = {"害羞", "生气", "病娇", "无语", "开心"}
         self.data_file = None  # 将在 initialize 中设置
 
     async def initialize(self):
@@ -84,8 +104,8 @@ class ManosabaMemesPlugin(Star):
         text = parts[1]
         face = parts[2] if len(parts) > 2 else None
         
-        if face is not None and face not in self.face_whitelist:
-            yield event.plain_result(f"表情 {face} 无效，可选表情：{', '.join(self.face_whitelist)}")
+        if face is not None and face not in FACE_WHITELIST:
+            yield event.plain_result(f"表情 {face} 无效，可选表情：{', '.join(FACE_WHITELIST)}")
             return
         
         text = text.replace("\\n", "\n")
@@ -104,17 +124,19 @@ class ManosabaMemesPlugin(Star):
             logger.error(f"生成安安说话图片失败: {e}")
             yield event.plain_result(f"生成图片失败: {str(e)}")
 
-    @filter.regex(r"^【(疑问|反驳|伪证|赞同|魔法)(?:[:：]([^】]*))?】(.+)$", flags=re.MULTILINE)
+    @filter.regex(r"^【(疑问|反驳|伪证/赞同|魔法)(?:[:：]([^】]*))?】(.+)$", flags=re.MULTILINE)
     async def handle_trial(self, event: AstrMessageEvent):
         """生成审判表情包
         
         用法: 【疑问/反驳/伪证/赞同/魔法:[角色名]】这是一个选项文本
         角色名可选: 梅露露, 诺亚, 汉娜, 奈叶香, 亚里沙, 米莉亚, 雪莉, 艾玛, 玛格, 安安, 可可, 希罗, 蕾雅
         可发送多行以添加多个选项
+        
+        注意：最多支持 10 个选项
         """
         message_str = event.message_str
         matches = re.findall(
-            r"^【(疑问|反驳|伪证|赞同|魔法)(?:[:：]([^】]*))?】(.+)$",
+            r"^【(疑问|反驳|伪证/赞同|魔法)(?:[:：]([^】]*))?】(.+)$",
             message_str,
             flags=re.M,
         )
@@ -129,6 +151,15 @@ class ManosabaMemesPlugin(Star):
                 return
             options.append(Option(statement_enum, text))
 
+        # 前置校验：检查选项数量
+        if len(options) > MAX_OPTIONS_COUNT:
+            yield event.plain_result(f"选项数量过多，最多支持 {MAX_OPTIONS_COUNT} 个选项")
+            return
+        
+        if len(options) == 0:
+            yield event.plain_result("请至少输入一个选项")
+            return
+
         try:
             loop = asyncio.get_event_loop()
             image_bytes = await loop.run_in_executor(
@@ -141,6 +172,9 @@ class ManosabaMemesPlugin(Star):
                 yield event.image_result(temp_path)
             finally:
                 Path(temp_path).unlink(missing_ok=True)
+        except ValueError as e:
+            # 捕获选项数量等业务级错误
+            yield event.plain_result(str(e))
         except OverflowError:
             yield event.plain_result("选项过多，请减少选项数量")
         except Exception as e:
@@ -192,8 +226,9 @@ class ManosabaMemesPlugin(Star):
 说明: 生成审判时的选项图片，支持多行输入生成多个选项
 类型: 疑问, 反驳, 伪证, 赞同, 魔法
 魔法角色: 梅露露, 诺亚, 汉娜, 奈叶香, 亚里沙, 米莉亚, 雪莉, 艾玛, 玛格, 安安, 可可, 希罗, 蕾雅
+注意：最多支持 10 个选项
 示例: 【伪证】我和艾玛不是恋人
-示例: 【魔法:诺亚】液体操控
+示例: 【魔法: 诺亚】液体操控  （冒号后可以有空格）
 
 3️⃣ 切换角色
 用法: 切换角色 [角色名]
@@ -204,8 +239,9 @@ class ManosabaMemesPlugin(Star):
 💡 小贴士:
 • 在文本中输入 \\n 可以换行
 • 中括号【】中的内容会被渲染成紫色
-• 选项数量建议 3 条以内效果最佳
-• 角色选择会自动保存，重启后依然有效"""
+• 选项数量建议 3 条以内效果最佳，最多支持 10 条
+• 角色选择会自动保存，重启后依然有效
+• 角色名和表情名会自动去除首尾空格，支持常见输入格式"""
         yield event.plain_result(help_text)
 
     async def terminate(self):

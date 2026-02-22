@@ -1,0 +1,51 @@
+"""插件常量定义
+
+此模块定义了插件中使用的所有常量，包括：
+- 表情白名单
+- 审判界面布局常量
+- 颜色常量
+"""
+
+# 允许的表情白名单，用于防止路径遍历攻击
+FACE_WHITELIST = {"害羞", "生气", "病娇", "无语", "开心"}
+
+# 审判界面布局常量
+# 图片尺寸
+TRIAL_IMAGE_WIDTH = 1260
+TRIAL_IMAGE_HEIGHT = 1080
+
+# 选项框尺寸
+OPTION_WIDTH = 802
+OPTION_HEIGHT = 216
+OPTION_START_X = 29
+OPTION_START_Y = 364
+OPTION_END_Y = 780
+
+# 最大间距（像素）
+MAX_PADDING = 286
+
+# 最大选项数量限制（防止过多选项导致渲染问题）
+MAX_OPTIONS_COUNT = 10
+
+# 声明图标尺寸
+STATEMENT_ICON_WIDTH = 146
+STATEMENT_ICON_HEIGHT = 128
+STATEMENT_OFFSET_X = 21
+STATEMENT_OFFSET_Y = -43
+
+# 文本区域偏移
+TEXT_OFFSET_X = 109
+TEXT_OFFSET_Y = 32
+TEXT_WIDTH = 589
+TEXT_HEIGHT = 150
+MAX_FONT_HEIGHT = 48
+
+# 文本颜色
+TEXT_COLOR = (39, 33, 30, 255)
+BRACKET_COLOR = (39, 33, 30, 255)
+
+# 安安说话区域常量
+ANAN_REGION_X = 100
+ANAN_REGION_Y = 432
+ANAN_REGION_WIDTH = 319
+ANAN_REGION_HEIGHT = 204
