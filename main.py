@@ -132,7 +132,7 @@ class ManosabaMemesPlugin(Star):
             logger.error(f"生成安安说话图片失败: {e}")
             yield event.plain_result(f"生成图片失败: {str(e)}")
 
-    @filter.regex(r"^【(疑问|反驳|伪证|赞同|魔法)(?:[:：]([^】]*))?】(.+)$", flags=re.MULTILINE)
+    @filter.regex(r"【(疑问|反驳|伪证|赞同|魔法)(?:[:：]([^】]*))?】(.+)", flags=re.MULTILINE)
     async def handle_trial(self, event: AstrMessageEvent):
         """生成审判表情包
 
