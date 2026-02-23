@@ -144,9 +144,8 @@ def get_option_coordinates(number: int) -> List[Tuple[int, int]]:
     
     布局算法说明：
     - 选项在审判界面中从上到下排列
-    - 如果选项数量为奇数，中心选项位于 START_Y
-    - 如果选项数量为偶数，中心位于两个中间选项之间
-    - padding 计算确保选项均匀分布在 START_Y 到 END_Y 之间
+    - 确保选项之间至少有 20px 的间距，避免挤在一起
+    - 在可用范围内垂直居中显示所有选项
     
     Args:
         number (int): The number of options
@@ -164,54 +163,32 @@ def get_option_coordinates(number: int) -> List[Tuple[int, int]]:
     if number <= 0:
         raise ValueError("选项数量必须大于 0")
     
-    available_height = OPTION_END_Y - OPTION_START_Y - OPTION_HEIGHT
+    # 最小间距（确保选项不会挤在一起）
+    MIN_SPACING = 20
     
-    if number % 2 == 1:
-        # 奇数个选项：中心对齐
-        # 上半部分选项数
-        upper_count = math.floor(number / 2)
-        # 下半部分选项数
-        lower_count = upper_count
-        
-        # 计算上方向的最大间距
-        if upper_count != 0:
-            upper_max_padding = available_height // upper_count
-        else:
-            upper_max_padding = MAX_PADDING
-        
-        # 计算下方向的最大间距
-        if lower_count != 0:
-            lower_max_padding = available_height // lower_count
-        else:
-            lower_max_padding = MAX_PADDING
-        
-        # 取最小值确保不超出范围
-        padding = int(min(MAX_PADDING, upper_max_padding, lower_max_padding))
-        
-        # 从中心向上和向下排列
-        return [
-            (OPTION_START_X, OPTION_START_Y + padding * i)
-            for i in range(-upper_count, lower_count + 1)
-        ]
+    # 计算所需的总高度（选项高度 + 最小间距）
+    total_layout_height = number * OPTION_HEIGHT + (number - 1) * MIN_SPACING
+    
+    # 计算可用高度
+    available_height = OPTION_END_Y - OPTION_START_Y
+    
+    if number == 1:
+        # 单个选项，垂直居中
+        start_y = OPTION_START_Y + (available_height - OPTION_HEIGHT) // 2
+        return [(OPTION_START_X, start_y)]
+    
+    # 计算起始Y坐标，使整体布局垂直居中
+    # 如果总高度超过可用高度，从 OPTION_START_Y 开始
+    if total_layout_height > available_height:
+        start_y = OPTION_START_Y
     else:
-        # 偶数个选项：中心在两个中间选项之间
-        upper_count = number // 2
-        lower_count = upper_count
-        
-        # 计算上方向的最大间距（考虑0.5偏移）
-        upper_max_padding = int(available_height / (upper_count - 0.5)) if upper_count > 0.5 else MAX_PADDING
-        
-        # 计算下方向的最大间距（考虑0.5偏移）
-        lower_max_padding = int(available_height / (lower_count + 0.5)) if lower_count > 0.5 else MAX_PADDING
-        
-        # 取最小值确保不超出范围
-        padding = int(min(MAX_PADDING, upper_max_padding, lower_max_padding))
-        
-        # 从中心偏移0.5开始向上和向下排列
-        return [
-            (OPTION_START_X, int(OPTION_START_Y + padding * (i + 0.5)))
-            for i in range(-upper_count, lower_count)
-        ]
+        start_y = OPTION_START_Y + (available_height - total_layout_height) // 2
+    
+    # 生成选项坐标，每个选项之间保持 MIN_SPACING 间距
+    return [
+        (OPTION_START_X, start_y + i * (OPTION_HEIGHT + MIN_SPACING))
+        for i in range(number)
+    ]
 
 
 def draw_trial(character: Character, options: List[Option]) -> bytes:

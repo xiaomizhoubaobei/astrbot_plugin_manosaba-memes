@@ -81,18 +81,132 @@ jobs:
         run: |
           # 从上一个标签生成 Release Notes
           PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          VERSION=${GITHUB_REF#refs/tags/v}
+          VERSION=${{ steps.get_version.outputs.version }}
+
+          # 定义生成更新日志的函数
+          generate_changelog_from_git() {
+            local PREVIOUS_TAG=$1
+            local VERSION=$2
+            
+            # 初始化分类
+            local FEAT=""
+            local FIX=""
+            local REFACTOR=""
+            local DOCS=""
+            local TEST=""
+            local STYLE=""
+            local CHORE=""
+            local PERF=""
+            local CI=""
+            local BUILD=""
+            local OTHER=""
+            
+            # 遍历所有 commit
+            while IFS= read -r commit; do
+              # 提取 commit 类型和消息
+              type=$(echo "$commit" | sed -n 's/^\([a-z]*\):.*/\1/p')
+              msg=$(echo "$commit" | sed 's/^[a-z]*: *//')
+              
+              # 按类型分类
+              case "$type" in
+                feat)    FEAT="${FEAT}- ${msg}\n" ;;
+                fix)     FIX="${FIX}- ${msg}\n" ;;
+                refactor) REFACTOR="${REFACTOR}- ${msg}\n" ;;
+                docs)    DOCS="${DOCS}- ${msg}\n" ;;
+                test)    TEST="${TEST}- ${msg}\n" ;;
+                style)   STYLE="${STYLE}- ${msg}\n" ;;
+                chore)   CHORE="${CHORE}- ${msg}\n" ;;
+                perf)    PERF="${PERF}- ${msg}\n" ;;
+                ci)      CI="${CI}- ${msg}\n" ;;
+                build)   BUILD="${BUILD}- ${msg}\n" ;;
+                *)       OTHER="${OTHER}- ${msg}\n" ;;
+              esac
+            done < <(git log ${PREVIOUS_TAG}..HEAD --pretty=format:"%s" --no-merges)
+            
+            # 构建更新日志
+            NOTES="## 📦 Release v${VERSION}\n\n"
+            
+            # 添加各个分类
+            if [ -n "$FEAT" ]; then
+              NOTES="${NOTES}### ✨ 新功能\n\n${FEAT}\n"
+            fi
+            
+            if [ -n "$FIX" ]; then
+              NOTES="${NOTES}### 🐛 修复\n\n${FIX}\n"
+            fi
+            
+            if [ -n "$PERF" ]; then
+              NOTES="${NOTES}### ⚡ 性能优化\n\n${PERF}\n"
+            fi
+            
+            if [ -n "$REFACTOR" ]; then
+              NOTES="${NOTES}### ♻️ 重构\n\n${REFACTOR}\n"
+            fi
+            
+            if [ -n "$DOCS" ]; then
+              NOTES="${NOTES}### 📝 文档\n\n${DOCS}\n"
+            fi
+            
+            if [ -n "$TEST" ]; then
+              NOTES="${NOTES}### ✅ 测试\n\n${TEST}\n"
+            fi
+            
+            if [ -n "$STYLE" ]; then
+              NOTES="${NOTES}### 💄 样式\n\n${STYLE}\n"
+            fi
+            
+            if [ -n "$CI" ]; then
+              NOTES="${NOTES}### 👷 CI\n\n${CI}\n"
+            fi
+            
+            if [ -n "$BUILD" ]; then
+              NOTES="${NOTES}### 📦 构建\n\n${BUILD}\n"
+            fi
+            
+            if [ -n "$CHORE" ]; then
+              NOTES="${NOTES}### 🔧 杂项\n\n${CHORE}\n"
+            fi
+            
+            if [ -n "$OTHER" ]; then
+              NOTES="${NOTES}### 其他\n\n${OTHER}\n"
+            fi
+            
+            # 如果没有任何提交
+            if [ "$NOTES" = "## 📦 Release v${VERSION}\n\n" ]; then
+              NOTES="${NOTES}无更新内容\n"
+            fi
+            
+            echo -e "$NOTES"
+          }
 
           if [ -z "$PREVIOUS_TAG" ]; then
-            NOTES="## 🎉 首次发布\n\n这是 AstrBot 百宝袋插件的首次正式发布。"
+            # 首次发布
+            NOTES="## 🎉 首次发布 v${VERSION}\n\n这是魔裁 Memes 插件的首次正式发布。\n\n### 功能特性\n\n- 安安说：生成安安举牌表情包\n- 审判表情包：生成审判选项表情包\n- 角色切换：支持艾玛和希罗角色切换\n- 角色偏好：自动保存角色选择\n\n### 使用方法\n\n请参考项目 README.md 了解详细使用方法。"
           else
-            # 生成更新日志，移除 commit 类型前缀（如 feat:, fix: 等）
-            COMMITS=$(git log ${PREVIOUS_TAG}..HEAD --pretty=format:"- %s" --no-merges | sed 's/^[a-z]*: //')
-            NOTES="## 📝 更新日志\n\n### 本次更新了\n\n$COMMITS"
+            # 检查是否存在 CHANGELOG.md
+            if [ -f "CHANGELOG.md" ]; then
+              # 从 CHANGELOG.md 提取当前版本的更新内容
+              CHANGELOG_CONTENT=$(awk -v version="\\[${VERSION}\\]" '$0 ~ version {found=1} found && /^##/ && !($0 ~ version) {exit} found {print}' CHANGELOG.md | tail -n +2)
+              
+              if [ -n "$CHANGELOG_CONTENT" ]; then
+                NOTES="## 📦 Release v${VERSION}\n\n${CHANGELOG_CONTENT}"
+              else
+                # CHANGELOG 中没有找到当前版本，从 git log 生成
+                NOTES=$(generate_changelog_from_git "$PREVIOUS_TAG" "$VERSION")
+              fi
+            else
+              # 从 git log 生成更新日志
+              NOTES=$(generate_changelog_from_git "$PREVIOUS_TAG" "$VERSION")
+            fi
           fi
 
+          # 添加发布说明
+          RELEASE_FOOTER="\n\n---\n\n### 📥 安装方法\n\n\`\`\`bash\n# 下载插件包后，将其放入 AstrBot 的 plugins 目录\ncp astrbot_plugin_manosaba-memes-*.zip ~/.astrbot/plugins/\n\`\`\`\n\n### 🔧 配置\n\n无需额外配置，插件加载后会自动创建配置目录。"
+          
+          NOTES="${NOTES}${RELEASE_FOOTER}"
+
           # 保存到文件
-          echo "$NOTES" > release_notes.md
+          echo -e "$NOTES" > release_notes.md
 
           # 输出到环境变量
           {
