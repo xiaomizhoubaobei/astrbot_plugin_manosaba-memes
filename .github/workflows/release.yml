@@ -35,7 +35,7 @@ jobs:
 
       # 2. 设置 Python 环境
       - name: Set up Python
-        uses: actions/setup-python@7f4fc3e22c37d6ff65e88745f38bd3157c663f7c # v4.9.1
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: '3.12'
 
@@ -56,26 +56,26 @@ jobs:
       # 5. 创建插件目录
       - name: Create plugin directory
         run: |
-          mkdir -p astrbot_plugin_treasure_bag
+          mkdir -p astrbot_plugin_manosaba-memes
 
       # 6. 复制插件文件到构建目录
       - name: Copy plugin files
         run: |
           # 复制主程序文件
-          cp main.py astrbot_plugin_treasure_bag/
+          cp main.py astrbot_plugin_manosaba-memes/
           # 复制配置文件和依赖文件
-          cp metadata.yaml requirements.txt astrbot_plugin_treasure_bag/ || true
+          cp metadata.yaml requirements.txt astrbot_plugin_manosaba-memes/ || true
           # 复制所有处理器文件
-          cp *_handler.py command_utils.py astrbot_plugin_treasure_bag/ || true
+          cp *_handler.py command_utils.py astrbot_plugin_manosaba-memes/ || true
           # 复制 logo 文件
-          cp logo.png astrbot_plugin_treasure_bag/ || true
+          cp logo.png astrbot_plugin_manosaba-memes/ || true
           # 复制子目录
-          cp -r baidu astrbot_plugin_treasure_bag/ || true
+          cp -r baidu astrbot_plugin_manosaba-memes/ || true
 
       # 7. 打包为 zip 文件
       - name: Create zip package
         run: |
-          zip -r astrbot_plugin_treasure_bag.zip astrbot_plugin_treasure_bag/
+          zip -r astrbot_plugin_manosaba-memes.zip astrbot_plugin_manosaba-memes/
 
       # 8. 生成 Release Notes
       - name: Generate Release Notes
@@ -239,7 +239,7 @@ jobs:
 
             本 Release 包含以下文件：
 
-            - **astrbot_plugin_treasure_bag-*.zip**: 插件安装包
+            - **astrbot_plugin_manosaba-memes-*.zip**: 插件安装包
             - **evidence-bundle.tar.gz**: CI 证据包（包含源代码、Git 元数据、依赖项、SBOM 等）
             - **evidence-bundle.tar.gz.sig**: 证据包的 Sigstore 签名
             - **evidence-bundle.tar.gz.crt**: 证据包的签名证书
@@ -252,7 +252,7 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            astrbot_plugin_treasure_bag.zip
+            astrbot_plugin_manosaba-memes.zip
             _evidence_dist/*.tar.gz
             _evidence_dist/*.sig
             _evidence_dist/*.crt

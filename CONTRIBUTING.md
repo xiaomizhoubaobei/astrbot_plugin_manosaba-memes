@@ -12,7 +12,7 @@
 
 ### 报告 Bug
 
-如果您在使用本项目时遇到 Bug，请通过 [Issue Tracker](https://github.com/xiaomizhoubaobei/astrbot_plugin_treasure_bag_plugin/issues) 提交 Bug 报告。在提交报告时，请尽量提供详细的信息，包括：
+如果您在使用本项目时遇到 Bug，请通过 [Issue Tracker](https://github.com/xiaomizhoubaobei/astrbot_plugin_manosaba-memes/issues) 提交 Bug 报告。在提交报告时，请尽量提供详细的信息，包括：
 
 *   您使用的操作系统和版本
 *   您使用的本项目版本
@@ -23,7 +23,7 @@
 
 ### 提交功能建议
 
-如果您对本项目有任何功能建议，请通过 [Issue Tracker](https://github.com/xiaomizhoubaobei/astrbot_plugin_treasure_bag_plugin/issues) 提交功能建议。在提交建议时，请尽量详细地描述您的想法，包括：
+如果您对本项目有任何功能建议，请通过 [Issue Tracker](https://github.com/xiaomizhoubaobei/astrbot_plugin_manosaba-memes/issues) 提交功能建议。在提交建议时，请尽量详细地描述您的想法，包括：
 
 *   您想要添加的功能
 *   为什么您认为这个功能对本项目有价值

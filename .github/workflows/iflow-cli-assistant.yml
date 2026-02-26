@@ -38,38 +38,40 @@ jobs:
     # 对于公共仓库，成员、所有者或协作者被视为受信任用户。
     # Bot 名称从仓库变量 BOT_NAME 引用
     if: |-
-      github.event_name == 'workflow_dispatch' ||
-      (
-        github.event_name == 'issues' && github.event.action == 'opened' &&
-        contains(github.event.issue.body, format('@{0}', vars.BOT_NAME || 'iflow-cli')) &&
-        !contains(github.event.issue.body, format('@{0} /review', vars.BOT_NAME || 'iflow-cli')) &&
-        !contains(github.event.issue.body, format('@{0} /triage', vars.BOT_NAME || 'iflow-cli')) &&
+      github.event.sender.type != 'Bot' && (
+        github.event_name == 'workflow_dispatch' ||
         (
-          github.event.repository.private == true ||
-          contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.issue.author_association)
-        )
-      ) ||
-      (
+          github.event_name == 'issues' && github.event.action == 'opened' &&
+          contains(github.event.issue.body, format('@{0}', vars.BOT_NAME || 'iflow-cli')) &&
+          !contains(github.event.issue.body, format('@{0} /review', vars.BOT_NAME || 'iflow-cli')) &&
+          !contains(github.event.issue.body, format('@{0} /triage', vars.BOT_NAME || 'iflow-cli')) &&
+          (
+            github.event.repository.private == true ||
+            contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.issue.author_association)
+          )
+        ) ||
         (
-          github.event_name == 'issue_comment' ||
-          github.event_name == 'pull_request_review_comment'
-        ) &&
-        contains(github.event.comment.body, format('@{0}', vars.BOT_NAME || 'iflow-cli')) &&
-        !contains(github.event.comment.body, format('@{0} /review', vars.BOT_NAME || 'iflow-cli')) &&
-        !contains(github.event.comment.body, format('@{0} /triage', vars.BOT_NAME || 'iflow-cli')) &&
+          (
+            github.event_name == 'issue_comment' ||
+            github.event_name == 'pull_request_review_comment'
+          ) &&
+          contains(github.event.comment.body, format('@{0}', vars.BOT_NAME || 'iflow-cli')) &&
+          !contains(github.event.comment.body, format('@{0} /review', vars.BOT_NAME || 'iflow-cli')) &&
+          !contains(github.event.comment.body, format('@{0} /triage', vars.BOT_NAME || 'iflow-cli')) &&
+          (
+            github.event.repository.private == true ||
+            contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
+          )
+        ) ||
         (
-          github.event.repository.private == true ||
-          contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
-        )
-      ) ||
-      (
-        github.event_name == 'pull_request_review' &&
-        contains(github.event.review.body, format('@{0}', vars.BOT_NAME || 'iflow-cli')) &&
-        !contains(github.event.review.body, format('@{0} /review', vars.BOT_NAME || 'iflow-cli')) &&
-        !contains(github.event.review.body, format('@{0} /triage', vars.BOT_NAME || 'iflow-cli')) &&
-        (
-          github.event.repository.private == true ||
-          contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.review.author_association)
+          github.event_name == 'pull_request_review' &&
+          contains(github.event.review.body, format('@{0}', vars.BOT_NAME || 'iflow-cli')) &&
+          !contains(github.event.review.body, format('@{0} /review', vars.BOT_NAME || 'iflow-cli')) &&
+          !contains(github.event.review.body, format('@{0} /triage', vars.BOT_NAME || 'iflow-cli')) &&
+          (
+            github.event.repository.private == true ||
+            contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.review.author_association)
+          )
         )
       )
     runs-on: 'ubuntu-latest'

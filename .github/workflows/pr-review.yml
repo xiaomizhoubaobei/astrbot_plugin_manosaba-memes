@@ -41,52 +41,54 @@ jobs:
     # 对于私有仓库，有权访问仓库的用户被视为受信任用户。
     # 对于公共仓库，成员、所有者或协作者被视为受信任用户。
     if: |-
-      github.event_name == 'workflow_dispatch' ||
-      (
-        github.event_name == 'pull_request' &&
+      github.event.sender.type != 'Bot' && (
+        github.event_name == 'workflow_dispatch' ||
         (
-          github.event.repository.private == true ||
-          contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
-        )
-      ) ||
-      (
+          github.event_name == 'pull_request' &&
+          (
+            github.event.repository.private == true ||
+            contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
+          )
+        ) ||
         (
           (
-            github.event_name == 'issue_comment' &&
-            github.event.issue.pull_request
-          ) ||
-          github.event_name == 'pull_request_review_comment'
-        ) &&
+            (
+              github.event_name == 'issue_comment' &&
+              github.event.issue.pull_request
+            ) ||
+            github.event_name == 'pull_request_review_comment'
+          ) &&
+          (
+            contains(github.event.comment.body, '@iflow-cli /review ') ||
+            contains(github.event.comment.body, '@iFlow-CLI /review ') ||
+            contains(github.event.comment.body, '@IFLOW-CLI /review ') ||
+            contains(github.event.comment.body, '@IFlow-CLI /review ') ||
+            endsWith(github.event.comment.body, '@iflow-cli /review') ||
+            endsWith(github.event.comment.body, '@iFlow-CLI /review') ||
+            endsWith(github.event.comment.body, '@IFLOW-CLI /review') ||
+            endsWith(github.event.comment.body, '@IFlow-CLI /review')
+          ) &&
+          (
+            github.event.repository.private == true ||
+            contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
+          )
+        ) ||
         (
-          contains(github.event.comment.body, '@iflow-cli /review ') ||
-          contains(github.event.comment.body, '@iFlow-CLI /review ') ||
-          contains(github.event.comment.body, '@IFLOW-CLI /review ') ||
-          contains(github.event.comment.body, '@IFlow-CLI /review ') ||
-          endsWith(github.event.comment.body, '@iflow-cli /review') ||
-          endsWith(github.event.comment.body, '@iFlow-CLI /review') ||
-          endsWith(github.event.comment.body, '@IFLOW-CLI /review') ||
-          endsWith(github.event.comment.body, '@IFlow-CLI /review')
-        ) &&
-        (
-          github.event.repository.private == true ||
-          contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
-        )
-      ) ||
-      (
-        github.event_name == 'pull_request_review' &&
-        (
-          contains(github.event.review.body, '@iflow-cli /review ') ||
-          contains(github.event.review.body, '@iFlow-CLI /review ') ||
-          contains(github.event.review.body, '@IFLOW-CLI /review ') ||
-          contains(github.event.review.body, '@IFlow-CLI /review ') ||
-          endsWith(github.event.review.body, '@iflow-cli /review') ||
-          endsWith(github.event.review.body, '@iFlow-CLI /review') ||
-          endsWith(github.event.review.body, '@IFLOW-CLI /review') ||
-          endsWith(github.event.review.body, '@IFlow-CLI /review')
-        ) &&
-        (
-          github.event.repository.private == true ||
-          contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.review.author_association)
+          github.event_name == 'pull_request_review' &&
+          (
+            contains(github.event.review.body, '@iflow-cli /review ') ||
+            contains(github.event.review.body, '@iFlow-CLI /review ') ||
+            contains(github.event.review.body, '@IFLOW-CLI /review ') ||
+            contains(github.event.review.body, '@IFlow-CLI /review ') ||
+            endsWith(github.event.review.body, '@iflow-cli /review') ||
+            endsWith(github.event.review.body, '@iFlow-CLI /review') ||
+            endsWith(github.event.review.body, '@IFLOW-CLI /review') ||
+            endsWith(github.event.review.body, '@IFlow-CLI /review')
+          ) &&
+          (
+            github.event.repository.private == true ||
+            contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.review.author_association)
+          )
         )
       )
     runs-on: 'ubuntu-latest'
