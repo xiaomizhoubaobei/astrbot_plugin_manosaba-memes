@@ -1,0 +1,114 @@
+name: '🚀 iFlow CLI PR 审查终结者'
+
+on:
+  issue_comment:
+    types:
+      - 'created'
+
+concurrency:
+  group: '${{ github.workflow }}-${{ github.event.issue.number }}'
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: 'bash'
+
+permissions:
+  contents: 'write'
+  issues: 'write'
+  pull-requests: 'write'
+
+jobs:
+  modify-code:
+    if: |-
+      github.event_name == 'issue_comment' &&
+      github.event.issue.pull_request &&
+      (
+        contains(github.event.comment.body, '@iflow-cli /review-killer') ||
+        contains(github.event.comment.body, '@iFlow-CLI /review-killer') ||
+        contains(github.event.comment.body, '@IFLOW-CLI /review-killer') ||
+        contains(github.event.comment.body, '@IFlow-CLI /review-killer')
+      ) &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
+    runs-on: 'ubuntu-latest'
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: 检出 PR 分支
+        uses: xt0rted/pull-request-comment-branch@v3.0.0
+        id: checkout_pr
+
+      - name: 从评论中提取说明
+        id: extract
+        run: |
+          COMMENT="${{ github.event.comment.body }}"
+          # Extract everything after "@iflow-cli /review-killer " (case insensitive)
+          # First check if the pattern exists, then extract
+          if echo "$COMMENT" | grep -qiE '@iflow-cli[[:space:]]+/review-killer'; then
+            INSTRUCTIONS=$(echo "$COMMENT" | sed -E 's/.*@[iI][fF][lL][oO][wW]-[cC][lL][iI][[:space:]]+\/[rR][eE][vV][iI][eE][wW]-[kK][iI][lL][lL][eE][rR][[:space:]]*(.*)/\1/' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+          else
+            INSTRUCTIONS=""
+          fi
+          echo "instructions=$INSTRUCTIONS" >> $GITHUB_OUTPUT
+
+      - name: '运行 iFlow CLI 实现'
+        uses: iflow-ai/iflow-cli-action@v2.0.0
+        id: 'iflow_cli_implementation'
+        with:
+          api_key: ${{ secrets.IFLOW_API_KEY }}
+          timeout: "1800"
+          debug: "true"
+          settings_json: |
+            {
+                "selectedAuthType": "iflow",
+                "apiKey": "${{ secrets.IFLOW_API_KEY }}",
+                "baseUrl": "https://apis.iflow.cn/v1",
+                "modelName": "qwen3-coder-plus",
+                "searchApiKey": "${{ secrets.IFLOW_API_KEY }}",
+                "mcpServers": {
+                  "github": {
+                  "command": "github-mcp-server",
+                  "args": [
+                    "stdio"
+                  ],
+                  "includeTools": [
+                    "add_issue_comment"
+                  ],
+                    "env": {
+                      "GITHUB_PERSONAL_ACCESS_TOKEN": "${{ secrets.GITHUB_TOKEN }}"
+                    }
+                  }
+                }
+            }
+          prompt: |
+            ## 角色
+
+            你是一个 PR 审查助手。你的任务是根据
+            审查评论修改代码。请按照以下步骤操作：
+
+            1. 分析环境变量中提供的 PR 审查评论。
+            2. 从评论中提取修改说明："${{ steps.extract.outputs.instructions }}"
+            3. 通过创建或修改所需文件来实现请求的更改。
+            4. 确保所有更改根据审查要求都是完整和正确的。
+            5. 仅专注于实现当前的审查评论。
+
+            ## 指南
+
+            - 进行所有必要的代码更改以解决审查评论
+            - 确保新代码遵循现有的项目约定
+            - 如适用，添加或修改测试
+            - 将所有 shell 变量引用为 "${VAR}"（带引号和花括号）
+
+            ## 提交更改
+
+            实现更改后：
+            1. 暂存所有修改的文件
+            2. 使用描述性消息提交更改
+            3. 将更改推送到 ${{ steps.checkout_pr.outputs.head_ref }} 分支
+
+            **切勿直接提交到 `main` 分支。**
+            **切勿强制推送**

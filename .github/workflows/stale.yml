@@ -27,7 +27,7 @@ jobs:
           egress-policy: audit
       - uses: actions/stale@f7176fd3007623b69d27091f9b9d4ab7995f0a06 # v5.2.1
         with:
-          repo-token: ${{ secrets.TOKEN }}
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
           stale-issue-message: |
             ⚠️ 此议题已超过30天没有活动
             

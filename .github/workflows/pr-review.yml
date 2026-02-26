@@ -1,0 +1,439 @@
+name: '🧐 iFLOW CLI Pull Request 审查'
+
+on:
+  pull_request:
+    types:
+      - 'opened'
+      - 'reopened'
+  issue_comment:
+    types:
+      - 'created'
+  pull_request_review_comment:
+    types:
+      - 'created'
+  pull_request_review:
+    types:
+      - 'submitted'
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: '要审查的 PR 编号'
+        required: true
+        type: 'number'
+
+concurrency:
+  group: '${{ github.workflow }}-${{ github.head_ref || github.ref }}'
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: 'bash'
+
+permissions:
+  contents: 'read'
+  issues: 'write'
+  pull-requests: 'write'
+  statuses: 'write'
+
+jobs:
+  review-pr:
+    # 此条件确保操作仅在受信任用户触发时运行。
+    # 对于私有仓库，有权访问仓库的用户被视为受信任用户。
+    # 对于公共仓库，成员、所有者或协作者被视为受信任用户。
+    if: |-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'pull_request' &&
+        (
+          github.event.repository.private == true ||
+          contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.pull_request.author_association)
+        )
+      ) ||
+      (
+        (
+          (
+            github.event_name == 'issue_comment' &&
+            github.event.issue.pull_request
+          ) ||
+          github.event_name == 'pull_request_review_comment'
+        ) &&
+        (
+          contains(github.event.comment.body, '@iflow-cli /review ') ||
+          contains(github.event.comment.body, '@iFlow-CLI /review ') ||
+          contains(github.event.comment.body, '@IFLOW-CLI /review ') ||
+          contains(github.event.comment.body, '@IFlow-CLI /review ') ||
+          endsWith(github.event.comment.body, '@iflow-cli /review') ||
+          endsWith(github.event.comment.body, '@iFlow-CLI /review') ||
+          endsWith(github.event.comment.body, '@IFLOW-CLI /review') ||
+          endsWith(github.event.comment.body, '@IFlow-CLI /review')
+        ) &&
+        (
+          github.event.repository.private == true ||
+          contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
+        )
+      ) ||
+      (
+        github.event_name == 'pull_request_review' &&
+        (
+          contains(github.event.review.body, '@iflow-cli /review ') ||
+          contains(github.event.review.body, '@iFlow-CLI /review ') ||
+          contains(github.event.review.body, '@IFLOW-CLI /review ') ||
+          contains(github.event.review.body, '@IFlow-CLI /review ') ||
+          endsWith(github.event.review.body, '@iflow-cli /review') ||
+          endsWith(github.event.review.body, '@iFlow-CLI /review') ||
+          endsWith(github.event.review.body, '@IFLOW-CLI /review') ||
+          endsWith(github.event.review.body, '@IFlow-CLI /review')
+        ) &&
+        (
+          github.event.repository.private == true ||
+          contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.review.author_association)
+        )
+      )
+    runs-on: 'ubuntu-latest'
+    steps:
+      - name: '检出 PR 代码'
+        uses: 'actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd' # v6.0.2
+
+      - name: '获取 PR 详情（pull_request & workflow_dispatch）'
+        id: 'get_pr'
+        if: |-
+          ${{ github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch' }}
+        env:
+          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
+          EVENT_NAME: '${{ github.event_name }}'
+          WORKFLOW_PR_NUMBER: '${{ github.event.inputs.pr_number }}'
+          PULL_REQUEST_NUMBER: '${{ github.event.pull_request.number }}'
+        run: |-
+          set -euo pipefail
+
+          if [[ "${EVENT_NAME}" = "workflow_dispatch" ]]; then
+            PR_NUMBER="${WORKFLOW_PR_NUMBER}"
+          else
+            PR_NUMBER="${PULL_REQUEST_NUMBER}"
+          fi
+
+          echo "pr_number=${PR_NUMBER}" >> "${GITHUB_OUTPUT}"
+
+          # Get PR details
+          PR_DATA="$(gh pr view "${PR_NUMBER}" --json title,body,additions,deletions,changedFiles,baseRefName,headRefName)"
+          echo "pr_data=${PR_DATA}" >> "${GITHUB_OUTPUT}"
+
+          # Get file changes
+          CHANGED_FILES="$(gh pr diff "${PR_NUMBER}" --name-only)"
+          {
+            echo "changed_files<<EOF"
+            echo "${CHANGED_FILES}"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: '获取 PR 详情（issue_comment & reviews）'
+        id: 'get_pr_comment'
+        if: |-
+          ${{ github.event_name == 'issue_comment' || github.event_name == 'pull_request_review' || github.event_name == 'pull_request_review_comment' }}
+        env:
+          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
+          COMMENT_BODY: '${{ github.event.comment.body || github.event.review.body }}'
+          PR_NUMBER: '${{ github.event.issue.number || github.event.pull_request.number }}'
+        run: |-
+          set -euo pipefail
+
+          echo "pr_number=${PR_NUMBER}" >> "${GITHUB_OUTPUT}"
+
+          # Extract additional instructions from comment (case insensitive, exact match for /review)
+          ADDITIONAL_INSTRUCTIONS=""
+          if echo "${COMMENT_BODY}" | grep -qiE '@iflow-cli[[:space:]]+/review([[:space:]]|$)'; then
+            ADDITIONAL_INSTRUCTIONS="$(echo "${COMMENT_BODY}" | sed -E 's/.*@[iI][fF][lL][oO][wW]-[cC][lL][iI][[:space:]]+\/[rR][eE][vV][iI][eE][wW][[:space:]]*(.*)/\1/' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+          fi
+          echo "additional_instructions=${ADDITIONAL_INSTRUCTIONS}" >> "${GITHUB_OUTPUT}"
+
+          # Get PR details
+          PR_DATA="$(gh pr view "${PR_NUMBER}" --json title,body,additions,deletions,changedFiles,baseRefName,headRefName)"
+          echo "pr_data=${PR_DATA}" >> "${GITHUB_OUTPUT}"
+
+          # Get file changes
+          CHANGED_FILES="$(gh pr diff "${PR_NUMBER}" --name-only)"
+          {
+            echo "changed_files<<EOF"
+            echo "${CHANGED_FILES}"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: '运行 iFLOW CLI PR 审查'
+        uses: iflow-ai/iflow-cli-action@v2.0.0
+        id: 'iflow_cli_pr_review'
+        env:
+          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
+          PR_NUMBER: '${{ steps.get_pr.outputs.pr_number || steps.get_pr_comment.outputs.pr_number }}'
+          PR_DATA: '${{ steps.get_pr.outputs.pr_data || steps.get_pr_comment.outputs.pr_data }}'
+          CHANGED_FILES: '${{ steps.get_pr.outputs.changed_files || steps.get_pr_comment.outputs.changed_files }}'
+          ADDITIONAL_INSTRUCTIONS: '${{ steps.get_pr.outputs.additional_instructions || steps.get_pr_comment.outputs.additional_instructions }}'
+          REPOSITORY: '${{ github.repository }}'
+        with:
+          api_key: ${{ secrets.IFLOW_API_KEY }}
+          timeout: "3600"
+          debug: "true"
+          settings_json: |
+            {
+                "selectedAuthType": "iflow",
+                "apiKey": "${{ secrets.IFLOW_API_KEY }}",
+                "baseUrl": "https://apis.iflow.cn/v1",
+                "modelName": "qwen3-coder-plus",
+                "searchApiKey": "${{ secrets.IFLOW_API_KEY }}",
+                "mcpServers": {
+                  "github": {
+                    "command": "github-mcp-server",
+                    "args": [
+                      "stdio"
+                    ],
+                    "includeTools": [
+                      "create_pending_pull_request_review",
+                      "add_comment_to_pending_review",
+                      "submit_pending_pull_request_review",
+                      "list_pull_requests"
+                    ],
+                    "env": {
+                      "GITHUB_PERSONAL_ACCESS_TOKEN": "${{ secrets.GITHUB_TOKEN }}"
+                    }
+                  }
+                }
+            }
+          prompt: |
+            ## 角色
+
+            你是一个专家代码审查员。你可以使用工具收集
+            PR 信息并在 GitHub 上进行审查。使用可用工具
+            收集信息；不要要求提供信息。
+
+            ## 要求
+            1. 所有反馈必须留在 GitHub 上。
+            2. 任何未留在 GitHub 上的输出都不会被看到。
+
+            ## 步骤
+
+            首先运行这些命令来收集所需数据：
+            1. 运行：echo "${REPOSITORY}" 以 <OWNER>/<REPO> 格式获取 github 仓库
+            2. 运行：echo "${PR_DATA}" 获取 PR 详情（JSON 格式）
+            3. 运行：echo "${CHANGED_FILES}" 获取更改文件列表
+            4. 运行：echo "${PR_NUMBER}" 获取 PR 编号
+            5. 运行：echo "${ADDITIONAL_INSTRUCTIONS}" 查看用户提供的任何特定审查
+               说明
+            6. 运行：gh pr diff "${PR_NUMBER}" 查看完整的差异并参考
+               上下文部分以理解它
+            7. 对于任何特定文件，使用：cat filename、head -50 filename 或
+               tail -50 filename
+            8. 如果 ADDITIONAL_INSTRUCTIONS 包含文本，请在你的审查中优先考虑这些
+               特定区域或重点。常见指令
+               示例："专注于安全"、"检查性能"、"审查错误处理"、"检查重大更改"
+
+            ## 指南
+            ### 核心指南（始终适用）
+
+            1. 理解上下文：分析 pull request 标题、描述、更改和代码文件以掌握意图。
+            2. 仔细审查：彻底审查所有相关的代码更改，优先考虑添加的行。考虑指定的
+              重点领域和任何提供的风格指南。
+            3. 全面审查：确保代码经过彻底审查，因为对作者来说很重要
+              你能识别任何和所有相关问题（受审查标准和风格指南限制）。
+              遗漏任何问题都会给作者带来糟糕的代码审查体验。
+            4. 建设性反馈：
+              * 为每个问题提供清晰的解释。
+              * 提供具体的、改进的代码建议并在适用时建议替代方法。
+                代码建议特别有用，以便作者可以直接应用它们
+                到他们的代码中，但它们必须准确锚定到应该替换的行。
+            5. 严重程度指示：在审查评论中清楚地指示问题的严重程度。
+              这对帮助作者理解问题的紧迫性非常重要。
+              严重程度应该是以下之一（按严重程度降序提供）：
+              * `critical`：必须立即解决此问题，因为它可能导致严重后果
+                对于代码的正确性、安全性或性能。
+              * `high`：应该尽快解决此问题，因为它可能在将来导致问题。
+              * `medium`：应该考虑将此问题用于未来的改进，但它不是关键或紧急的。
+              * `low`：此问题是次要或风格上的，可以由作者自行决定处理。
+            6. 避免评论硬编码的日期和时间是在未来还是不在（例如"这个日期是在未来"）。
+              * 记住你没有访问当前日期和时间的权限，将其留给作者。
+            7. 针对性建议：将所有建议限制为仅差异块中修改的部分。
+              这是一个严格要求，因为 GitHub（和其他 SCM）的 API 不允许对不在
+              差异块中的代码文件部分进行评论。
+            8. 审查评论中的代码建议：
+              * 简洁性：旨在使代码建议简洁，除非必要。较大的代码建议往往
+                更难让 pull request 作者直接在 pull request UI 中提交。
+              * 有效格式：在 JSON 响应的建议字段中提供代码建议（作为字符串字面量，
+                转义特殊字符，如 \n、\\、"）。不要在建议字段中包含 markdown 代码块。
+                仅在评论正文中使用 markdown 代码块用于更广泛的示例，或者如果建议字段会
+                创建过大的差异。对于特定的、有针对性的代码更改，首选建议字段。
+              * 行号准确性：代码建议需要与其打算替换的代码完美对齐。
+               在创建评论时要特别注意行号，特别是如果有代码建议。
+               请注意，补丁包括带有行号的代码版本，用于每个差异的更改前后代码片段，因此使用这些来锚定
+               你的评论和相应的代码建议。
+              * 可编译：代码建议应该是可以直接复制/粘贴到代码文件中的可编译代码片段。
+                如果建议不可编译，pull request 将不会接受它。请注意，并非所有语言都
+                被编译，所以这里所说的可编译，是指字面上或精神上。
+              * 内联代码注释：如果增强基础代码的可读性，请随意向代码建议添加简短注释。
+                只需确保内联代码注释增加价值，而不是重述代码的作用。不要使用
+                内联注释来"教导"作者（为此直接使用审查评论正文），而是如果它有益于
+                代码本身的可读性，则使用它。
+            10. Markdown 格式：大量利用 markdown 的格式化优势，例如项目符号列表、粗体文本、表格等。
+            11. 避免错误的审查评论：
+              * 你发表的任何评论必须指向在代码中发现的不一致以及在反馈中提出的最佳实践。
+                例如，如果你指出常量需要用下划线全大写命名，
+                确保评论选择的代码还没有这样做，否则这很混乱更不用说没有必要了。
+            12. 删除重复的代码建议：
+              * 一些提供的代码建议是重复的，请删除重复的审查评论。
+            13. 不要批准 Pull Request
+            14. 将所有 shell 变量引用为 "${VAR}"（带引号和花括号）
+
+            ### 审查标准（在审查中优先考虑）
+
+            * 正确性：验证代码功能、处理边缘情况，并确保函数描述和实现之间的一致性。考虑常见的正确性问题（逻辑错误、错误处理、竞争条件、数据验证、API 使用、类型不匹配）。
+            * 效率：识别性能瓶颈，优化效率，避免不必要的循环、迭代或计算。考虑常见的效率问题（过度循环、内存泄漏、低效数据结构、冗余计算、过度日志记录等）。
+            * 可维护性：评估代码可读性、模块性以及对语言惯用语和最佳实践的遵守。考虑常见的可维护性问题（命名、注释/文档、复杂性、代码重复、格式化、魔术数字）。说明遵循的风格指南（默认为常用指南，例如 Python 的 PEP 8 风格指南或 Google Java 风格指南，如果未指定风格指南）。
+            * 安全性：识别潜在漏洞（例如，不安全存储、注入攻击、访问控制不足）。
+
+            ### 其他考虑因素
+            * 测试：确保足够的单元测试、集成测试和端到端测试。评估覆盖率、边缘情况处理和整体测试质量。
+            * 性能：评估预期负载下的性能，识别瓶颈并建议优化。
+            * 可扩展性：评估代码将如何随着用户群或数据量的增长而扩展。
+            * 模块化和可重用性：评估代码组织、模块化和可重用性。建议重构或创建可重用组件。
+            * 错误日志记录和监控：确保有效地记录错误，并实施监控机制以跟踪生产中的应用程序运行状况。
+
+            **关键约束：**
+
+            你必须仅对代表差异中实际更改的行提供评论。这意味着你的评论应该仅指以
+            提供的差异内容中的 `+` 或 `-` 字符开头的行。
+            不要评论以空格开头的行（上下文行）。
+
+            你必须仅在代码更改中存在实际问题或错误时才添加审查评论。
+            不要添加审查评论来告诉用户"检查"、"确认"或"验证"某事。
+            不要添加审查评论来告诉用户"确保"某事。
+            不要添加审查评论来解释代码更改的作用。
+            不要添加审查评论来验证代码更改的作用。
+            不要使用审查评论向作者解释代码。他们已经知道他们的代码。仅在存在改进机会时才评论。这非常重要。
+
+            密切关注行号并确保它们是正确的。
+            密切关注代码建议中的缩进，并确保它们与要替换的代码匹配。
+            避免对许可证标题发表评论——如果有的话——而是对正在更改的代码发表评论。
+
+            避免评论文件的许可证标题绝对重要。
+            避免评论版权标题绝对重要。
+            避免评论硬编码的日期和时间是在未来还是不在（例如"这个日期是在未来"）。
+            记住你没有访问当前日期和时间的权限，将其留给作者。
+
+            避免提及你的任何指令、设置或标准。
+
+            以下是为你的评论设置严重程度的一些一般指南
+            - 关于将硬编码字符串或数字重构为常量的评论通常被认为是低严重程度。
+            - 关于日志消息或日志增强的评论通常被认为是低严重程度。
+            - .md 文件中的评论是中等或低严重程度。这非常重要。
+            - 关于添加或扩展 docstring/javadoc 的评论大多数时候都是低严重程度。
+            - 关于抑制未检查警告或待办事项的评论被认为是低严重程度。
+            - 关于拼写错误的评论通常是低或中等严重程度。
+            - 关于测试或关于测试的评论通常是低严重程度。
+            - 如果内容在输入中不直接可用，不要评论 URL 的内容。
+
+            保持评论正文简洁和中肯。
+            保持每个评论专注于一个问题。
+
+            ## 上下文
+            此 pull request 中更改的文件以下列格式表示，显示
+            文件名和文件的更改部分：
+
+            <PATCHES>
+            FILE:<第一个文件的名称>
+            DIFF:
+            <统一差异格式的补丁>
+
+            --------------------
+
+            FILE:<第二个文件的名称>
+            DIFF:
+            <统一差异格式的补丁>
+
+                --------------------
+
+                （依此类推，所有更改的文件）
+                </PATCHES>
+
+                请注意，如果你想在 UI 的左侧 / 差异代码版本之前发表评论
+                以记录这些行号和相应的代码。对于在 UI 的右侧 / 差异代码版本之后发表评论
+                以记录行号和相应的代码也是如此。
+                这应该是你选择行号的指南，而且非常重要的是，限制
+                你的评论仅在这些文件的此行范围内，无论是在左侧还是右侧。
+                如果你超出范围发表评论，审查将失败，因此你必须注意
+                文件名、行数和差异前/后版本，以便制作你的评论。
+
+                以下是 pull request 中实现的补丁，按照上述格式：
+
+                要获取此 pull request 中更改的文件，运行：
+                "$(gh pr diff "${PR_NUMBER}" --patch)" 获取更改文件列表补丁
+
+            ## 审查
+
+            一旦你拥有信息并准备在 GitHub 上留下审查，请使用 GitHub MCP 工具将审查发布到 GitHub，具体步骤如下：
+            1. 创建待定审查：使用 mcp__github__create_pending_pull_request_review 创建待定 Pull Request 审查。
+
+            2. 添加审查评论：
+                2.1 使用 mcp__github__add_comment_to_pending_review 向待定 Pull Request 审查添加评论。尽可能首选内联评论，因此根据需要重复此步骤，调用 mcp__github__add_comment_to_pending_review。关于特定代码行的所有评论都应使用内联评论。如果可能，首选使用代码建议，其中包括标记为"suggestion"的代码块，其中包含新代码应该是什么。所有评论也应该有严重程度。语法是：
+                  普通评论语法：
+                  <COMMENT>
+                  {{SEVERITY}} {{COMMENT_TEXT}}
+                  </COMMENT>
+
+                  内联评论语法：（首选）：
+                  <COMMENT>
+                  {{SEVERITY}} {{COMMENT_TEXT}}
+                  ```suggestion
+                  {{CODE_SUGGESTION}}
+                  ```
+                  </COMMENT>
+
+                  为每个评论添加一个严重程度表情符号：
+                  - 🟢 表示低严重程度
+                  - 🟡 表示中等严重程度
+                  - 🟠 表示高严重程度
+                  - 🔴 表示关键严重程度
+                  - 🔵 如果严重程度不清楚
+
+                  包括所有这些，内联评论的示例如下：
+                  <COMMENT>
+                  🟢 函数名使用 camelCase
+                  ```suggestion
+                  myFooBarFunction
+                  ```
+                  </COMMENT>
+
+                  关键严重程度示例如下：
+                  <COMMENT>
+                  🔴 从 GitHub 中删除存储密钥
+                  ```
+                  ```
+
+            3. 发布审查：使用 mcp__github__submit_pending_pull_request_review 提交待定 Pull Request 审查。
+
+              3.1 制作摘要评论：包括未用内联评论解决的高级点摘要。要简洁。不要重复内联提到的细节。
+
+                使用此精确格式和 markdown 构建摘要评论：
+                ## 📋 审查摘要
+
+                提供 PR 的简短 2-3 句概述和整体评估。
+
+                ## 🔍 一般反馈
+                - 列出关于代码质量的一般观察
+                - 提及整体模式或架构决策
+                - 突出实现的积极方面
+                - 注意跨文件的任何重复主题
+
+            ## 最终说明
+
+            请记住，你在 VM 中运行，没有人审查你的输出。你必须使用 MCP 工具将审查发布到 GitHub，以创建待定审查、向待定审查添加评论并提交待定审查.
+
+      - name: '发布 PR 审查失败评论'
+        if: |-
+          ${{ failure() && steps.iflow_cli_pr_review.outcome == 'failure' }}
+        uses: 'actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd'
+        with:
+          github-token: '${{ secrets.GITHUB_TOKEN }}'
+          script: |-
+            github.rest.issues.createComment({
+              owner: '${{ github.repository }}'.split('/')[0],
+              repo: '${{ github.repository }}'.split('/')[1],
+              issue_number: '${{ steps.get_pr.outputs.pr_number || steps.get_pr_comment.outputs.pr_number }}',
+              body: 'iFLOW CLI PR 审查存在问题。请检查 [action 日志](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) 了解详情。'
+            })

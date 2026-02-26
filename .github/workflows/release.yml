@@ -5,6 +5,8 @@ on:
   push:
     branches:
       - main
+    paths:
+      - '**/*.py'
   workflow_dispatch:  # 允许手动触发
 
 permissions:
@@ -27,7 +29,7 @@ jobs:
 
       # 1. 检出代码
       - name: Checkout code
-        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0  # 获取完整的 git 历史
 
@@ -35,7 +37,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@7f4fc3e22c37d6ff65e88745f38bd3157c663f7c # v4.9.1
         with:
-          python-version: '3.14'
+          python-version: '3.12'
 
       # 3. 获取版本号
       - name: Get version
@@ -181,12 +183,12 @@ jobs:
 
           if [ -z "$PREVIOUS_TAG" ]; then
             # 首次发布
-            NOTES="## 🎉 首次发布 v${VERSION}\n\n这是魔裁 Memes 插件的首次正式发布。\n\n### 功能特性\n\n- 安安说：生成安安举牌表情包\n- 审判表情包：生成审判选项表情包\n- 角色切换：支持艾玛和希罗角色切换\n- 角色偏好：自动保存角色选择\n\n### 使用方法\n\n请参考项目 README.md 了解详细使用方法。"
+            NOTES="## 🎉 首次发布 v${VERSION}\n\n这是 beta_dxl_bert_vits 插件的首次正式发布。\n\n### 功能特性\n\n- 请参考项目 README.md 了解功能详情\n\n### 使用方法\n\n请参考项目 README.md 了解详细使用方法。"
           else
             # 检查是否存在 CHANGELOG.md
             if [ -f "CHANGELOG.md" ]; then
               # 从 CHANGELOG.md 提取当前版本的更新内容
-              CHANGELOG_CONTENT=$(awk -v version="\\[${VERSION}\\]" '$0 ~ version {found=1} found && /^##/ && !($0 ~ version) {exit} found {print}' CHANGELOG.md | tail -n +2)
+              CHANGELOG_CONTENT=$(awk -v version="\\[${VERSION}\\]" '$0 ~ version {found=1} found {print} found && /^## / && !($0 ~ version) {exit}' CHANGELOG.md | tail -n +2)
               
               if [ -n "$CHANGELOG_CONTENT" ]; then
                 NOTES="## 📦 Release v${VERSION}\n\n${CHANGELOG_CONTENT}"
@@ -201,7 +203,7 @@ jobs:
           fi
 
           # 添加发布说明
-          RELEASE_FOOTER="\n\n---\n\n### 📥 安装方法\n\n\`\`\`bash\n# 下载插件包后，将其放入 AstrBot 的 plugins 目录\ncp astrbot_plugin_manosaba-memes-*.zip ~/.astrbot/plugins/\n\`\`\`\n\n### 🔧 配置\n\n无需额外配置，插件加载后会自动创建配置目录。"
+          RELEASE_FOOTER="\n\n---\n\n### 📥 安装方法\n\n\`\`\`bash\n# 下载插件包后，将其放入 AstrBot 的 plugins 目录\n"
           
           NOTES="${NOTES}${RELEASE_FOOTER}"
 

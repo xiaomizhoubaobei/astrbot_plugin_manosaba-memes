@@ -1,0 +1,337 @@
+name: '💬 iFLOW CLI 助手'
+
+# Bot 名称配置 - 将 BOT_NAME 设置为仓库变量
+# 前往 设置 > Secrets and variables > Actions > Variables 进行配置
+env:
+  BOT_NAME: ${{ vars.BOT_NAME || 'iflow-cli' }}
+
+on:
+  pull_request_review_comment:
+    types:
+      - 'created'
+  pull_request_review:
+    types:
+      - 'submitted'
+  issue_comment:
+    types:
+      - 'created'
+
+concurrency:
+  group: '${{ github.workflow }}-${{ github.event.issue.number }}'
+  cancel-in-progress: |-
+    ${{ github.event.sender.type == 'User' && ( github.event.issue.author_association == 'OWNER' || github.event.issue.author_association == 'MEMBER' || github.event.issue.author_association == 'COLLABORATOR') }}
+
+defaults:
+  run:
+    shell: 'bash'
+
+permissions:
+  contents: 'write'
+  id-token: 'write'
+  pull-requests: 'write'
+  issues: 'write'
+
+jobs:
+  iflow-cli:
+    # 此条件确保操作仅在受信任用户触发时运行。
+    # 对于私有仓库，有权访问仓库的用户被视为受信任用户。
+    # 对于公共仓库，成员、所有者或协作者被视为受信任用户。
+    # Bot 名称从仓库变量 BOT_NAME 引用
+    if: |-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issues' && github.event.action == 'opened' &&
+        contains(github.event.issue.body, format('@{0}', vars.BOT_NAME || 'iflow-cli')) &&
+        !contains(github.event.issue.body, format('@{0} /review', vars.BOT_NAME || 'iflow-cli')) &&
+        !contains(github.event.issue.body, format('@{0} /triage', vars.BOT_NAME || 'iflow-cli')) &&
+        (
+          github.event.repository.private == true ||
+          contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.issue.author_association)
+        )
+      ) ||
+      (
+        (
+          github.event_name == 'issue_comment' ||
+          github.event_name == 'pull_request_review_comment'
+        ) &&
+        contains(github.event.comment.body, format('@{0}', vars.BOT_NAME || 'iflow-cli')) &&
+        !contains(github.event.comment.body, format('@{0} /review', vars.BOT_NAME || 'iflow-cli')) &&
+        !contains(github.event.comment.body, format('@{0} /triage', vars.BOT_NAME || 'iflow-cli')) &&
+        (
+          github.event.repository.private == true ||
+          contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
+        )
+      ) ||
+      (
+        github.event_name == 'pull_request_review' &&
+        contains(github.event.review.body, format('@{0}', vars.BOT_NAME || 'iflow-cli')) &&
+        !contains(github.event.review.body, format('@{0} /review', vars.BOT_NAME || 'iflow-cli')) &&
+        !contains(github.event.review.body, format('@{0} /triage', vars.BOT_NAME || 'iflow-cli')) &&
+        (
+          github.event.repository.private == true ||
+          contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.review.author_association)
+        )
+      )
+    runs-on: 'ubuntu-latest'
+    steps:
+      - name: Harden the runner (Audit all outbound calls)
+        uses: step-security/harden-runner@5ef0c079ce82195b2a36a210272d6b661572d83e # v2.14.2
+        with:
+          egress-policy: audit
+      - name: '生成 GitHub App Token'
+        id: 'generate_token'
+        if: |-
+          ${{ vars.APP_ID }}
+        uses: 'actions/create-github-app-token@df432ceedc7162793a195dd1713ff69aefc7379e' # ratchet:actions/create-github-app-token@v2
+        with:
+          app-id: '${{ vars.APP_ID }}'
+          private-key: '${{ secrets.APP_PRIVATE_KEY }}'
+
+      - name: '从事件中获取上下文'
+        id: 'get_context'
+        env:
+          EVENT_NAME: '${{ github.event_name }}'
+          EVENT_PAYLOAD: '${{ toJSON(github.event) }}'
+        run: |-
+          set -euo pipefail
+
+          USER_REQUEST=""
+          ISSUE_NUMBER=""
+          IS_PR="false"
+
+          if [[ "${EVENT_NAME}" == "issues" ]]; then
+            USER_REQUEST=$(echo "${EVENT_PAYLOAD}" | jq -r .issue.body)
+            ISSUE_NUMBER=$(echo "${EVENT_PAYLOAD}" | jq -r .issue.number)
+          elif [[ "${EVENT_NAME}" == "issue_comment" ]]; then
+            USER_REQUEST=$(echo "${EVENT_PAYLOAD}" | jq -r .comment.body)
+            ISSUE_NUMBER=$(echo "${EVENT_PAYLOAD}" | jq -r .issue.number)
+            if [[ $(echo "${EVENT_PAYLOAD}" | jq -r .issue.pull_request) != "null" ]]; then
+              IS_PR="true"
+            fi
+          elif [[ "${EVENT_NAME}" == "pull_request_review" ]]; then
+            USER_REQUEST=$(echo "${EVENT_PAYLOAD}" | jq -r .review.body)
+            ISSUE_NUMBER=$(echo "${EVENT_PAYLOAD}" | jq -r .pull_request.number)
+            IS_PR="true"
+          elif [[ "${EVENT_NAME}" == "pull_request_review_comment" ]]; then
+            USER_REQUEST=$(echo "${EVENT_PAYLOAD}" | jq -r .comment.body)
+            ISSUE_NUMBER=$(echo "${EVENT_PAYLOAD}" | jq -r .pull_request.number)
+            IS_PR="true"
+          fi
+
+          # 清理用户请求
+          USER_REQUEST=$(echo "${USER_REQUEST}" | sed "s/.*@${BOT_NAME}//" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+          {
+            echo "user_request=${USER_REQUEST}"
+            echo "issue_number=${ISSUE_NUMBER}"
+            echo "is_pr=${IS_PR}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: '设置 git 用户用于提交'
+        run: |-
+          git config --global user.name "${BOT_NAME}[bot]"
+          git config --global user.email "${BOT_NAME}[bot]@users.noreply.github.com"
+
+      - name: '检出 PR 分支'
+        if: |-
+          ${{  steps.get_context.outputs.is_pr == 'true' }}
+        uses: 'actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd' # v6.0.2
+        with:
+          token: '${{ steps.generate_token.outputs.token || secrets.GITHUB_TOKEN }}'
+          repository: '${{ github.repository }}'
+          ref: 'refs/pull/${{ steps.get_context.outputs.issue_number }}/head'
+          fetch-depth: 0
+
+      - name: '检出 main 分支'
+        if: |-
+          ${{  steps.get_context.outputs.is_pr == 'false' }}
+        uses: 'actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd' # v6.0.2
+        with:
+          token: '${{ steps.generate_token.outputs.token || secrets.GITHUB_TOKEN }}'
+          repository: '${{ github.repository }}'
+          fetch-depth: 0
+
+      - name: '确认收到请求'
+        env:
+          GITHUB_ACTOR: '${{ github.actor }}'
+          GITHUB_TOKEN: '${{ steps.generate_token.outputs.token || secrets.GITHUB_TOKEN }}'
+          ISSUE_NUMBER: '${{ steps.get_context.outputs.issue_number }}'
+          REPOSITORY: '${{ github.repository }}'
+          REQUEST_TYPE: '${{ steps.get_context.outputs.request_type }}'
+        run: |-
+          set -euo pipefail
+          MESSAGE="@${GITHUB_ACTOR} I've received your request and I'm working on it now! 🤖"
+          if [[ -n "${MESSAGE}" ]]; then
+            gh issue comment "${ISSUE_NUMBER}" \
+              --body "${MESSAGE}" \
+              --repo "${REPOSITORY}"
+          fi
+
+      - name: '获取描述'
+        id: 'get_description'
+        env:
+          GITHUB_TOKEN: '${{ steps.generate_token.outputs.token || secrets.GITHUB_TOKEN }}'
+          IS_PR: '${{ steps.get_context.outputs.is_pr }}'
+          ISSUE_NUMBER: '${{ steps.get_context.outputs.issue_number }}'
+        run: |-
+          set -euo pipefail
+          if [[ "${IS_PR}" == "true" ]]; then
+            DESCRIPTION=$(gh pr view "${ISSUE_NUMBER}" --json body --template '{{.body}}')
+          else
+            DESCRIPTION=$(gh issue view "${ISSUE_NUMBER}" --json body --template '{{.body}}')
+          fi
+          {
+            echo "description<<EOF"
+            echo "${DESCRIPTION}"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: '获取评论'
+        id: 'get_comments'
+        env:
+          GITHUB_TOKEN: '${{ steps.generate_token.outputs.token || secrets.GITHUB_TOKEN }}'
+          IS_PR: '${{ steps.get_context.outputs.is_pr }}'
+          ISSUE_NUMBER: '${{ steps.get_context.outputs.issue_number }}'
+        run: |-
+          set -euo pipefail
+          if [[ "${IS_PR}" == "true" ]]; then
+            COMMENTS=$(gh pr view "${ISSUE_NUMBER}" --json comments --template '{{range .comments}}{{.author.login}}: {{.body}}{{"\n"}}{{end}}')
+          else
+            COMMENTS=$(gh issue view "${ISSUE_NUMBER}" --json comments --template '{{range .comments}}{{.author.login}}: {{.body}}{{"\n"}}{{end}}')
+          fi
+          {
+            echo "comments<<EOF"
+            echo "${COMMENTS}"
+            echo "EOF"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: '运行 iFLOW'
+        id: 'run_iflow'
+        uses: 'iflow-ai/iflow-cli-action@66bf336db117b4a06147af2901a34dc802bbd236'
+        env:
+          GITHUB_TOKEN: '${{ steps.generate_token.outputs.token || secrets.GITHUB_TOKEN }}'
+          REPOSITORY: '${{ github.repository }}'
+          USER_REQUEST: '${{ steps.get_context.outputs.user_request }}'
+          ISSUE_NUMBER: '${{ steps.get_context.outputs.issue_number }}'
+          IS_PR: '${{ steps.get_context.outputs.is_pr }}'
+        with:
+          precmd: "git config --global --add safe.directory /github/workspace"
+          api_key: ${{ secrets.IFLOW_API_KEY }}
+          timeout: "3600"
+          debug: "true"
+          settings_json: |
+            {
+                "selectedAuthType": "iflow",
+                "apiKey": "${{ secrets.IFLOW_API_KEY }}",
+                "baseUrl": "https://apis.iflow.cn/v1",
+                "modelName": "qwen3-coder-plus",
+                "searchApiKey": "${{ secrets.IFLOW_API_KEY }}",
+                "mcpServers": {
+                  "github": {
+                    "command": "github-mcp-server",
+                    "args": [
+                      "stdio"
+                    ],
+                    "includeTools": [
+                      "create_pending_pull_request_review",
+                      "add_comment_to_pending_review",
+                      "submit_pending_pull_request_review",
+                      "list_pull_requests"
+                    ],
+                    "env": {
+                      "GITHUB_PERSONAL_ACCESS_TOKEN": "${{ secrets.GITHUB_TOKEN }}"
+                    }
+                  }
+                }
+            }
+          prompt: |-
+            ## 角色
+
+            你是一个通过 GitHub 工作流中的 CLI 接口调用的有用 AI 助手。你可以使用工具与仓库交互并响应用户。
+
+            ## 上下文
+
+            - **仓库**: `${{ github.repository }}`
+            - **触发事件**: `${{ github.event_name }}`
+            - **Issue/PR 编号**: `${{ steps.get_context.outputs.issue_number }}`
+            - **这是一个 PR 吗？**: `${{ steps.get_context.outputs.is_pr }}`
+            - **Issue/PR 描述**:
+            `${{ steps.get_description.outputs.description }}`
+            - **评论**:
+            `${{ steps.get_comments.outputs.comments }}`
+
+            ## 用户请求
+
+            用户发送了以下请求:
+            `${{ steps.get_context.outputs.user_request }}`
+
+            ## 如何响应 Issue、PR 评论和问题
+
+            此工作流支持三种主要场景:
+
+            1. **为 Issue 创建修复**
+               - 仔细阅读用户请求和相关 issue 或 PR 描述。
+               - 使用可用工具收集所有相关上下文（例如，`gh issue view`、`gh pr view`、`gh pr diff`、`cat`、`head`、`tail`）。
+               - 在继续之前确定问题的根本原因。
+               - **以清单形式显示并维护计划**：
+                 - 在最开始，概述解决问题或处理请求所需的步骤，并将其作为清单评论发布到 issue 或 PR 上（使用 GitHub markdown 复选框：`- [ ] 任务`）。
+                 - 示例：
+                   ```
+                   ### 计划
+                   - [ ] 调查根本原因
+                   - [ ] 在 `file.py` 中实现修复
+                   - [ ] 添加/修改测试
+                   - [ ] 更新文档
+                   - [ ] 验证修复并关闭 issue
+                   ```
+                 - 使用：`gh pr comment "${ISSUE_NUMBER}" --body "<计划>"` 或 `gh issue comment "${ISSUE_NUMBER}" --body "<计划>"` 发布初始计划。
+                 - 在进行过程中，通过编辑同一评论来保持清单可见和最新（使用 `- [x]` 标记已完成的任务）。
+                   - 要更新清单：
+                     1. 找到清单的评论 ID（使用 `gh pr comment list "${ISSUE_NUMBER}"` 或 `gh issue comment list "${ISSUE_NUMBER}"`）。
+                     2. 使用更新的清单编辑评论：
+                        - 对于 PR：`gh pr comment --edit <评论-id> --body "<更新后的计划>"`
+                        - 对于 Issue：`gh issue comment --edit <评论-id> --body "<更新后的计划>"`
+                     3. 清单应仅作为 issue 或 PR 上的评论进行维护。不要在代码文件中跟踪或更新清单。
+               - 如果修复需要代码更改，确定哪些文件和行受到影响。如果需要澄清，请记录向用户提出的任何问题。
+               - 使用可用工具（例如，`write_file`）进行必要的代码或文档更改。确保所有更改都遵循项目约定和最佳实践。将所有 shell 变量引用为 `"${VAR}"`（带引号和花括号）以防止错误。
+               - 运行任何相关测试或检查以验证修复按预期工作。如果可能，提供证明问题已解决的证据（测试输出、屏幕截图等）。
+               - **分支和提交**：
+                 - **切勿直接提交到 `main` 分支。**
+                 - 如果你正在处理 **pull request**（`IS_PR` 为 `true`），则已检出正确的分支。只需提交并推送即可。
+                   - `git add .`
+                   - `git commit -m "feat: <描述更改>"`
+                   - `git push`
+                 - 如果你正在处理 **issue**（`IS_PR` 为 `false`），请为你的更改创建一个新分支。一个好的分支名称应该是 `issue/${ISSUE_NUMBER}/<简短描述>`。
+                   - `git checkout -b issue/${ISSUE_NUMBER}/my-fix`
+                   - `git add .`
+                   - `git commit -m "feat: <描述修复>"`
+                   - `git push origin issue/${ISSUE_NUMBER}/my-fix`
+                   - 推送后，你可以创建 pull request：`gh pr create --title "Fixes #${ISSUE_NUMBER}: <简短标题>" --body "此 PR 解决 issue #${ISSUE_NUMBER}。"`
+               - 在 markdown 文件中总结更改内容及原因：`write_file("response.md", "<你的回复>")`
+               - 将回复作为评论发布：
+                 - 对于 PR：`gh pr comment "${ISSUE_NUMBER}" --body-file response.md`
+                 - 对于 Issue：`gh issue comment "${ISSUE_NUMBER}" --body-file response.md`
+
+            2. **处理 Pull Request 上的评论**
+               - 阅读具体评论和 PR 的上下文。
+               - 使用 `gh pr view`、`gh pr diff` 和 `cat` 等工具来理解代码和讨论。
+               - 如果评论要求更改或澄清，请遵循与修复 issue 相同的过程：创建清单计划、实施、测试并提交任何所需的更改，同时更新清单。
+               - **提交更改**：已检出正确的 PR 分支。只需添加、提交并推送你的更改。
+                 - `git add .`
+                 - `git commit -m "fix: 解决审查评论"`
+                 - `git push`
+               - 如果评论是问题，请直接清晰地回答，并根据需要引用代码或文档。
+               - 在 `response.md` 中记录你的回复并将其作为 PR 评论发布：`gh pr comment "${ISSUE_NUMBER}" --body-file response.md`
+
+            3. **回答 Issue 上的任何问题**
+               - 使用 `gh issue view` 和相关工具阅读问题和完整的 issue 上下文。
+               - 根据需要研究或分析代码库以提供准确的答案。
+               - 如果问题需要代码或文档更改，请遵循上述修复过程，包括创建和更新清单计划，并按照第 1 节中的描述为你的更改创建新分支。
+               - 在 `response.md` 中编写清晰简洁的答案，并将其作为 issue 评论发布：`gh issue comment "${ISSUE_NUMBER}" --body-file response.md`
+
+            ## 指南
+
+            - **简洁且可操作。** 专注于高效解决用户的问题。
+            - **如果修改代码或文档，务必提交并推送你的更改。**
+            - **如果不确定修复或答案，请解释你的推理并提出澄清问题。**
+            - **遵循项目约定和最佳实践。**

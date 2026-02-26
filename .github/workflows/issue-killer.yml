@@ -1,0 +1,182 @@
+name: '🚀 iFlow CLI Issue 终结者'
+
+on:
+  issue_comment:
+    types:
+      - 'created'
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: '要实现的 issue 编号'
+        required: true
+        type: 'number'
+
+concurrency:
+  group: '${{ github.workflow }}-${{ github.event.issue.number }}'
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: 'bash'
+
+permissions:
+  contents: 'write'
+  issues: 'write'
+  pull-requests: 'write'
+
+jobs:
+  implement-issue:
+    if: |-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event_name == 'issue_comment' &&
+        contains(github.event.comment.body, '@iflow-issue-killer') &&
+        contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
+      )
+    runs-on: 'ubuntu-latest'
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 获取 Issue 详情
+        id: get_issue
+        uses: 'actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd'
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const issue_number = process.env.INPUT_ISSUE_NUMBER || context.issue.number;
+            core.setOutput('issue_number', issue_number);
+
+            const issue = await github.rest.issues.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: parseInt(issue_number)
+            });
+
+            core.setOutput('issue_title', issue.data.title);
+            core.setOutput('issue_body', issue.data.body);
+
+            // Parse implementation request from comment or use issue body
+            let implementation_request = issue.data.body;
+            if (context.eventName === 'issue_comment') {
+              implementation_request = context.payload.comment.body.replace('@iflow-issue-killer', '').trim();
+              if (implementation_request === '') {
+                implementation_request = issue.data.body;
+              }
+            }
+
+            core.setOutput('implementation_request', implementation_request);
+
+      - name: '运行 iFlow CLI 实现'
+        uses: iflow-ai/iflow-cli-action@v2.0.0
+        id: 'iflow_cli_implementation'
+        env:
+          GITHUB_TOKEN: '${{ secrets.GITHUB_TOKEN }}'
+          ISSUE_TITLE: '${{ steps.get_issue.outputs.issue_title }}'
+          ISSUE_BODY: '${{ steps.get_issue.outputs.issue_body }}'
+          ISSUE_NUMBER: '${{ steps.get_issue.outputs.issue_number }}'
+          REPOSITORY: '${{ github.repository }}'
+        with:
+          precmd: "git config --global --add safe.directory /github/workspace"
+          api_key: ${{ secrets.IFLOW_API_KEY }}
+          timeout: "1800"
+          debug: "true"
+          settings_json: |
+            {
+                "selectedAuthType": "iflow",
+                "apiKey": "${{ secrets.IFLOW_API_KEY }}",
+                "baseUrl": "https://apis.iflow.cn/v1",
+                "modelName": "qwen3-coder-plus",
+                "searchApiKey": "${{ secrets.IFLOW_API_KEY }}",
+                "mcpServers": {
+                  "github": {
+                  "command": "github-mcp-server",
+                  "args": [
+                    "stdio"
+                  ],
+                  "includeTools": [
+                    "create_pull_request",
+                    "list_pull_requests",
+                    "add_issue_comment"
+                  ],
+                    "env": {
+                      "GITHUB_PERSONAL_ACCESS_TOKEN": "${{ secrets.GITHUB_TOKEN }}"
+                    }
+                  }
+                }
+            }
+          prompt: |
+            ## 角色
+
+            你是一个实现助手。你的任务是根据提供的 GitHub issue 实现一个功能。请按照以下步骤操作：
+
+            1. **首先**：使用 GitHub MCP 工具在 issue 上创建开始评论
+            2. 分析环境变量中提供的 issue 标题和正文："${ISSUE_TITLE}" 和 "${ISSUE_BODY}"。
+            3. 如果触发此操作的评论包含额外的实现说明，也请使用它们。
+            4. 通过创建或修改所需文件来实现请求的功能。
+            5. 确保所有更改根据 issue 要求都是完整和正确的。
+            6. 除了所需的开始和完成评论外，不要添加评论或修改 issue 内容。
+            7. 仅专注于实现当前的 issue。
+
+            ## 创建开始评论
+
+            在开始实现之前，使用 GitHub MCP 工具在 issue 上创建开始评论：
+            1. 使用 add_issue_comment 向 issue #${ISSUE_NUMBER} 添加评论
+            2. 开始评论应包括：
+               - 🚀 实现任务已开始的通知
+               - 🤖 提及 iFlow CLI Issue 终结者正在处理该 issue
+               - 📋 当前状态：正在分析和实现功能
+               - 📝 **执行计划**：基于 issue 要求的计划实现步骤的简要概述
+               - ⏱️ 预计时间：通常需要几分钟到十分钟
+               - 🔍 **查看执行日志**：[GitHub Actions 运行](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+               - 🤖 请注意这是一个自动评论，会有完成通知
+            3. 对于执行计划，分析 issue 要求并提供清晰的、编号的实现步骤列表，例如：
+               - 要创建或修改的文件
+               - 要实现的关键功能
+               - 要添加或更新的测试
+               - 要更改的依赖项或配置
+
+            ## 指南
+
+            - 进行所有必要的代码更改以实现功能
+            - 确保新代码遵循现有的项目约定
+            - 如适用，添加或修改测试
+            - 将所有 shell 变量引用为 "${VAR}"（带引号和花括号）
+
+            ## 创建 Pull Request
+
+            实现功能后，使用 GitHub MCP 工具创建 pull request：
+            1. 使用 create_pull_request 创建 Pull Request。
+            2. PR 应从具有描述性名称的新分支创建（例如，feature/issue-${ISSUE_NUMBER}、fix/issue-${ISSUE_NUMBER} 或基于功能的描述性名称）
+            3. PR 标题应具有描述性并引用 issue 编号
+            4. PR 正文应解释已实现的内容并引用 issue
+            5. 记住你创建的分支名称，如果 PR 创建失败，完成评论将需要它
+
+            ## 创建完成评论
+
+            成功实现功能并创建 PR 后，使用 GitHub MCP 工具向 issue 添加完成评论：
+            1. 使用 add_issue_comment 向 issue #${ISSUE_NUMBER} 添加评论
+            2. 评论应包括：
+               - ✅ 确认 issue 已实现
+               - 🎉 所完成内容的简要摘要
+               - 📋 所做关键更改的列表
+               - 🔗 到创建的 Pull Request 的链接（如果成功）
+               - 📝 如果 PR 创建失败，使用你创建的实际分支名称提供手动 PR 创建链接，例如：https://github.com/${{ github.repository }}/compare/main...[YOUR_BRANCH_NAME]
+               - 🤖 请注意这是一个自动实现
+            3. 使用友好的语气并包含适当的表情符号以获得更好的用户体验
+
+      - name: '发布实现失败评论'
+        if: |-
+          ${{ failure() && steps.iflow_cli_implementation.outcome == 'failure' }}
+        uses: 'actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd'
+        with:
+          github-token: '${{ secrets.GITHUB_TOKEN }}'
+          script: |-
+            github.rest.issues.createComment({
+              owner: '${{ github.repository }}'.split('/')[0],
+              repo: '${{ github.repository }}'.split('/')[1],
+              issue_number: '${{ steps.get_issue.outputs.issue_number }}',
+              body: 'iFlow CLI issue 实现存在问题。请检查 [action 日志](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) 了解详情。'
+            })

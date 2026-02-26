@@ -1,0 +1,41 @@
+# Dependabot configuration file
+# 用于自动化管理项目依赖项更新
+
+version: 2
+updates:
+  # 配置 Python 依赖项更新
+  - package-ecosystem: "pip"  # 指定包管理器
+    directory: "/"  # 依赖项文件所在的目录
+    schedule:
+      interval: "weekly"  # 更新频率：每日、每周或每月
+      day: "tuesday"  # 指定星期几进行更新
+      time: "09:00"  # 指定更新时间（UTC）
+      timezone: "Asia/Shanghai"  # 指定时区
+    open-pull-requests-limit: 1  # 同时打开的最大 PR 数量
+    target-branch: "main"  # 目标分支
+    labels:
+      - "dependencies"  # 自动添加的标签
+      - "python"
+    # 定义版本更新策略
+    versioning-strategy: "auto"
+    # 提交消息前缀
+    commit-message:
+      prefix: "deps"
+      prefix-development: "deps(dev)"
+
+  # 配置 GitHub Actions 工作流更新
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "wednesday"
+      time: "10:00"
+      timezone: "Asia/Shanghai"
+    open-pull-requests-limit: 1
+    target-branch: "main"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "ci"
+      prefix-development: "ci(dev)"

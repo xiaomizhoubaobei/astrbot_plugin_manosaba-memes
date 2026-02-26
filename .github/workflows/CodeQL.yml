@@ -39,12 +39,12 @@ jobs:
         egress-policy: audit
 
     - name: 检出仓库
-      uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
     - name: 设置 Python 3.14
       uses: actions/setup-python@7f4fc3e22c37d6ff65e88745f38bd3157c663f7c # v4.9.1
       with:
-        python-version: '3.14'
+        python-version: '3.12'
 
     - name: 初始化 CodeQL
       uses: github/codeql-action/init@5d4e8d1aca955e8d8589aabd499c5cae939e33c7 # v4.31.9
