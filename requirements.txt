@@ -1,1 +1,1 @@
-sketchbook-py==0.2.1
+sketchbook-py==1.0.0
