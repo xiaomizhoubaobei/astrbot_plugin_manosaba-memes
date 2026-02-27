@@ -39,14 +39,17 @@ jobs:
         with:
           python-version: '3.12'
 
-      # 3. 获取版本号
-      - name: Get version
-        id: get_version
+      # 3. 获取版本号和插件名称
+      - name: Get version and plugin name
+        id: get_info
         run: |
           # 从 metadata.yaml 文件中读取版本号
           VERSION=$(grep "^version:" metadata.yaml | awk '{print $2}')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "tag_name=$VERSION" >> $GITHUB_OUTPUT
+          # 从 metadata.yaml 文件中读取插件名称
+          PLUGIN_NAME=$(grep "^name:" metadata.yaml | awk '{print $2}')
+          echo "plugin_name=$PLUGIN_NAME" >> $GITHUB_OUTPUT
 
       # 4. 安装依赖
       - name: Install dependencies
@@ -56,26 +59,29 @@ jobs:
       # 5. 创建插件目录
       - name: Create plugin directory
         run: |
-          mkdir -p astrbot_plugin_manosaba-memes
+          PLUGIN_NAME=${{ steps.get_info.outputs.plugin_name }}
+          mkdir -p "$PLUGIN_NAME"
 
       # 6. 复制插件文件到构建目录
       - name: Copy plugin files
         run: |
+          PLUGIN_NAME=${{ steps.get_info.outputs.plugin_name }}
           # 复制主程序文件
-          cp main.py astrbot_plugin_manosaba-memes/
+          cp main.py "$PLUGIN_NAME"/
           # 复制配置文件和依赖文件
-          cp metadata.yaml requirements.txt astrbot_plugin_manosaba-memes/ || true
+          cp metadata.yaml requirements.txt "$PLUGIN_NAME"/ || true
           # 复制所有处理器文件
-          cp *_handler.py command_utils.py astrbot_plugin_manosaba-memes/ || true
+          cp *_handler.py command_utils.py "$PLUGIN_NAME"/ || true
           # 复制 logo 文件
-          cp logo.png astrbot_plugin_manosaba-memes/ || true
+          cp logo.png "$PLUGIN_NAME"/ || true
           # 复制子目录
-          cp -r baidu astrbot_plugin_manosaba-memes/ || true
+          cp -r baidu "$PLUGIN_NAME"/ || true
 
       # 7. 打包为 zip 文件
       - name: Create zip package
         run: |
-          zip -r astrbot_plugin_manosaba-memes.zip astrbot_plugin_manosaba-memes/
+          PLUGIN_NAME=${{ steps.get_info.outputs.plugin_name }}
+          zip -r "$PLUGIN_NAME".zip "$PLUGIN_NAME"/
 
       # 8. 生成 Release Notes
       - name: Generate Release Notes
@@ -83,7 +89,7 @@ jobs:
         run: |
           # 从上一个标签生成 Release Notes
           PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          VERSION=${{ steps.get_version.outputs.version }}
+          VERSION=${{ steps.get_info.outputs.version }}
 
           # 定义生成更新日志的函数
           generate_changelog_from_git() {
@@ -228,8 +234,8 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
         with:
-          tag_name: ${{ steps.get_version.outputs.tag_name }}
-          name: Release ${{ steps.get_version.outputs.version }}
+          tag_name: ${{ steps.get_info.outputs.tag_name }}
+          name: Release ${{ steps.get_info.outputs.version }}
           body: |
             ${{ steps.release_notes.outputs.notes }}
 
@@ -239,7 +245,7 @@ jobs:
 
             本 Release 包含以下文件：
 
-            - **astrbot_plugin_manosaba-memes-*.zip**: 插件安装包
+            - **${{ steps.get_info.outputs.plugin_name }}-*.zip**: 插件安装包
             - **evidence-bundle.tar.gz**: CI 证据包（包含源代码、Git 元数据、依赖项、SBOM 等）
             - **evidence-bundle.tar.gz.sig**: 证据包的 Sigstore 签名
             - **evidence-bundle.tar.gz.crt**: 证据包的签名证书
@@ -252,7 +258,7 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            astrbot_plugin_manosaba-memes.zip
+            ${{ steps.get_info.outputs.plugin_name }}.zip
             _evidence_dist/*.tar.gz
             _evidence_dist/*.sig
             _evidence_dist/*.crt
