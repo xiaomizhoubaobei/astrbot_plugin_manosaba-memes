@@ -1,72 +1,56 @@
 # 此工作流程使用未经 GitHub 认证的操作。它们由第三方提供，并受单独的服务条款、隐私政策和支持文档的约束。
 
- name: Scorecard supply-chain security
- on:
-   pull_request:
-     branches: [ "main" ]
+name: Scorecard 供应链安全
+on:
+  pull_request:
+    branches: [ "main" ]
 
- # 声明默认权限为只读。
- permissions: read-all
+# 声明默认权限为只读。
+permissions: read-all
 
- jobs:
-   analysis:
-     name: Scorecard analysis
-     runs-on: ubuntu-latest
-     # `publish_results: true` 仅在从默认分支运行时有效。如果禁用，可以删除条件。
-     if: github.event.repository.default_branch == github.ref_name
-     permissions:
-       # 上传结果到代码扫描仪表板需要。
-       security-events: write
-       # 发布结果并获取徽章需要（请参阅下面的 publish_results）。
-       id-token: write
-       # 如果安装在私有存储库中，请取消注释下面的权限。
-       # contents: read
-       # actions: read
+jobs:
+  analysis:
+    name: Scorecard 分析
+    runs-on: ubuntu-latest
+    # `publish_results: true` 仅在从默认分支运行时有效。如果禁用，可以删除条件。
+    if: github.event.repository.default_branch == github.ref_name
+    permissions:
+      # 上传结果到代码扫描仪表板需要。
+      security-events: write
+      # 发布结果并获取徽章需要（请参阅下面的 publish_results）。
+      id-token: write
 
-     steps:
-       - name: Harden the runner (Audit all outbound calls)
-         uses: step-security/harden-runner@5ef0c079ce82195b2a36a210272d6b661572d83e # v2.14.2
-         with:
-           egress-policy: audit
-       - name: "Checkout code"
-         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-         with:
-           persist-credentials: false
+    steps:
+      - name: 加固运行器（审计所有出站调用）
+        uses: step-security/harden-runner@5ef0c079ce82195b2a36a210272d6b661572d83e # v2.14.2
+        with:
+          egress-policy: audit
+      - name: "检出代码"
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
 
-       - name: "Run analysis"
-         uses: ossf/scorecard-action@f49aabe0b5af0936a0987cfb85d86b75731b0186 # v2.4.1
-         with:
-           results_file: results.sarif
-           results_format: sarif
-           # （可选）"write" PAT 令牌。如果：
-           # - 您希望在*公共*存储库上启用分支保护检查，或
-           # - 您正在私有存储库中安装 Scorecard
-           # 要创建 PAT，请按照 `https://github.com/ossf/scorecard-action?tab=readme-ov-file#authentication-with-fine-grained-pat-optional.` 中的步骤操作。
-           # repo_token: ${{ secrets.SCORECARD_TOKEN }}
+      - name: "运行分析"
+        uses: ossf/scorecard-action@f49aabe0b5af0936a0987cfb85d86b75731b0186 # v2.4.1
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
 
-           # 公共存储库：
-           #   - 将结果发布到 OpenSSF REST API，以便消费者轻松访问
-           #   - 允许存储库包含 Scorecard 徽章。
-           #   - 请参阅 `https://github.com/ossf/scorecard-action#publishing-results.`
-           # 对于私有存储库：
-           #   - 无论此处输入的值如何，`publish_results` 将始终设置为 `false`。
-           publish_results: true
+          # （可选）如果您有一个 .gitattributes 文件标记为 export-ignore，请取消注释 file_mode
 
-           # （可选）如果您有一个 .gitattributes 文件标记为 export-ignore，请取消注释 file_mode
-           # file_mode: git
+      # 将结果上传为构件（可选）。注释掉将禁用将 SARIF 格式的运行结果
+      # 上传到仓库的 Actions 选项卡。
+      - name: "上传构件"
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        with:
+          name: SARIF 文件
+          path: results.sarif
+          retention-days: 5
 
-       # Upload the results as artifacts (optional). Commenting out will disable uploads of run results in SARIF
-       # format to the repository Actions tab.
-       - name: "Upload artifact"
-         uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
-         with:
-           name: SARIF file
-           path: results.sarif
-           retention-days: 5
-
-       # Upload the results to GitHub's code scanning dashboard (optional).
-       # Commenting out will disable upload of results to your repo's Code Scanning dashboard
-       - name: "Upload to code-scanning"
-         uses: github/codeql-action/upload-sarif@45580472a5bb82c4681c4ac726cfdb60060c2ee1 # v3.32.4
-         with:
-           sarif_file: results.sarif
+      # 将结果上传到 GitHub 的代码扫描仪表板（可选）。
+      # 注释掉将禁用将结果上传到您仓库的代码扫描仪表板
+      - name: "上传到代码扫描"
+        uses: github/codeql-action/upload-sarif@45580472a5bb82c4681c4ac726cfdb60060c2ee1 # v3.32.4
+        with:
+          sarif_file: results.sarif

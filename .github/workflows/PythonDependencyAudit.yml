@@ -1,7 +1,7 @@
 # 此工作流使用的操作未获得 GitHub 认证。
 # 它们由第三方提供，并受单独的服务条款、隐私政策和支持文档约束。
 
-name: Python Dependency Audit
+name: 'Python 依赖审计'
 
 on:
   pull_request:
@@ -20,17 +20,17 @@ jobs:
         os: [ubuntu-latest]
         python-version: ['3.9', '3.10', '3.11', '3.12', '3.13']
     runs-on: ${{ matrix.os }}
-    name: Audit on ${{ matrix.os }} with Python ${{ matrix.python-version }}
+    name: 审计在 ${{ matrix.os }} 上使用 Python ${{ matrix.python-version }}
     permissions:
       contents: read
       security-events: write
 
     steps:
-      - name: Harden the runner (Audit all outbound calls)
+      - name: 加固运行器（审计所有出站调用）
         uses: step-security/harden-runner@5ef0c079ce82195b2a36a210272d6b661572d83e # v2.14.2
         with:
           egress-policy: audit
-      - name: Checkout repository
+      - name: 检出仓库
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: 设置 Python

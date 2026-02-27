@@ -18,29 +18,29 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      id-token: write  # REQUIRED for signing
+      id-token: write  # 必需的签名权限
 
     steps:
       # 0. 安全加固
-      - name: Harden Runner
+      - name: 加固运行器
         uses: step-security/harden-runner@c6295a65d1254861815972266d5933fd6e532bdf # v2.11.1
         with:
           egress-policy: audit
 
       # 1. 检出代码
-      - name: Checkout code
+      - name: 检出代码
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 0  # 获取完整的 git 历史
 
       # 2. 设置 Python 环境
-      - name: Set up Python
+      - name: 设置 Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: '3.12'
 
       # 3. 获取版本号和插件名称
-      - name: Get version and plugin name
+      - name: 获取版本号和插件名称
         id: get_info
         run: |
           # 从 metadata.yaml 文件中读取版本号
@@ -52,18 +52,18 @@ jobs:
           echo "plugin_name=$PLUGIN_NAME" >> $GITHUB_OUTPUT
 
       # 4. 安装依赖
-      - name: Install dependencies
+      - name: 安装依赖
         run: |
           pip install -r requirements.txt
 
       # 5. 创建插件目录
-      - name: Create plugin directory
+      - name: 创建插件目录
         run: |
           PLUGIN_NAME=${{ steps.get_info.outputs.plugin_name }}
           mkdir -p "$PLUGIN_NAME"
 
       # 6. 复制插件文件到构建目录
-      - name: Copy plugin files
+      - name: 复制插件文件
         run: |
           PLUGIN_NAME=${{ steps.get_info.outputs.plugin_name }}
           # 复制主程序文件
@@ -78,7 +78,7 @@ jobs:
           cp -r baidu "$PLUGIN_NAME"/ || true
 
       # 7. 打包为 zip 文件
-      - name: Create zip package
+      - name: 创建 zip 包
         run: |
           PLUGIN_NAME=${{ steps.get_info.outputs.plugin_name }}
           zip -r "$PLUGIN_NAME".zip "$PLUGIN_NAME"/
@@ -189,13 +189,13 @@ jobs:
 
           if [ -z "$PREVIOUS_TAG" ]; then
             # 首次发布
-            NOTES="## 🎉 首次发布 v${VERSION}\n\n这是 beta_dxl_bert_vits 插件的首次正式发布。\n\n### 功能特性\n\n- 请参考项目 README.md 了解功能详情\n\n### 使用方法\n\n请参考项目 README.md 了解详细使用方法。"
+            NOTES="## 🎉 首次发布 v${VERSION}\n\n这是魔裁 Memes 插件的首次正式发布。\n\n### 功能特性\n\n- 生成「魔法少女的魔法审判」的表情包\n\n### 使用方法\n\n请参考项目 README.md 了解详细使用方法。"
           else
             # 检查是否存在 CHANGELOG.md
             if [ -f "CHANGELOG.md" ]; then
               # 从 CHANGELOG.md 提取当前版本的更新内容
               CHANGELOG_CONTENT=$(awk -v version="\\[${VERSION}\\]" '$0 ~ version {found=1} found {print} found && /^## / && !($0 ~ version) {exit}' CHANGELOG.md | tail -n +2)
-              
+
               if [ -n "$CHANGELOG_CONTENT" ]; then
                 NOTES="## 📦 Release v${VERSION}\n\n${CHANGELOG_CONTENT}"
               else
@@ -224,8 +224,8 @@ jobs:
           } >> $GITHUB_OUTPUT
 
       # 9. 生成证据包
-      - name: Generate Evidence Bundle
-        if: always()  # Run even if build fails
+      - name: 生成证据包
+        if: always()  # 即使构建失败也运行
         uses: OrygnsCode/ci-evidence-pack@8222d7b3b015ce2f72222215bdf9966773036ab1 # main
         with:
           sign: 'true'

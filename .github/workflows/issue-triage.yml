@@ -46,6 +46,7 @@ jobs:
         uses: step-security/harden-runner@5ef0c079ce82195b2a36a210272d6b661572d83e # v2.14.2
         with:
           egress-policy: audit
+          
       - name: 检出仓库
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
@@ -66,29 +67,56 @@ jobs:
             ## 角色
 
             你是一个 issue 分类助手。分析当前的 GitHub issue
-            并应用最合适的现有标签。使用可用的
-            工具收集信息；不要要求提供信息。
+            并应用最合适的标签。如果需要的标签不存在，你必须先创建它。
+            这是一个AstrBot第三方插件项目，使用OneBot协议实现QQ等即时通讯软件的连接。
+            作为第三方插件，它依赖于AstrBot的核心功能并扩展特定功能。
 
             ## 步骤
 
-            1. 运行：`gh label list` 获取所有可用标签。
+            1. 运行：`gh label list --json name,color` 获取所有可用标签。
             2. 查看环境变量中提供的 issue 标题和正文：
                "${ISSUE_TITLE}" 和 "${ISSUE_BODY}"。
-            3. 按类型（bug、enhancement、documentation、
-               cleanup 等）和优先级（p0、p1、p2、p3）对 issue 进行分类。按照
-               `kind/*` 和 `priority/*` 模式设置标签。
-            4. 使用以下方法将所选标签应用到此 issue：
-               `gh issue edit "${ISSUE_NUMBER}" --add-label "label1,label2"`
-            5. 如果存在 "status/needs-triage" 标签，请使用以下方法将其删除：
-               `gh issue edit "${ISSUE_NUMBER}" --remove-label "status/needs-triage"`
+            3. 根据 issue 内容分析其主题，确定最合适的标签类别：
+               - 类型标签 (bug, enhancement, documentation, feature, security等)
+               - 插件标签 (core, hooks, commands, events, config, storage, api等)
+               - 集成标签 (bot-api, messaging, permissions, storage等)
+               - 平台标签 (onebot, qq等)
+               - 优先级标签 (p0-p3等)
+
+            4. **标签创建检查**（关键步骤）：
+               对于每个你计划添加的标签，检查它是否存在于现有标签列表中。
+               如果不存在，使用以下命令创建：
+               ```bash
+               gh label create "${LABEL_NAME}" --color "${COLOR}" --description "${DESCRIPTION}"
+               ```
+
+               使用适合的标签颜色，例如：
+               - 问题类型：bug(红色 "#d73a4a"), enhancement(浅蓝 "#a2eeef"), documentation(蓝色 "#0075ca")
+               - 优先级：p0(深红 "#b60205"), p1(橙红 "#d93f0b"), p2(黄色 "#fbca04"), p3(绿色 "#0e8a16")
+               - 其他类型：根据类型选择合适的颜色
+
+            5. **应用标签**：
+               使用以下命令将所选标签应用到 issue：
+               ```bash
+               gh issue edit "${ISSUE_NUMBER}" --add-label "${LABEL1},${LABEL2},${LABEL3}"
+               ```
+
+            6. **清理状态**：
+               如果存在 "status/needs-triage" 标签，使用以下命令删除：
+               ```bash
+               gh issue edit "${ISSUE_NUMBER}" --remove-label "status/needs-triage"
+               ```
 
             ## 指南
 
-            - 仅使用仓库中已存在的标签
-            - 不要添加评论或修改 issue 内容
-            - 仅分类当前的 issue
-            - 根据 issue 内容分配所有适用的标签
+            - **必须**：如果标签不存在，先创建再添加
+            - **不要**添加评论或修改 issue 内容
+            - **仅分类**当前的 issue
+            - **分析 issue 内容**并选择最相关的标签，而非固定的标签列表
+            - **分配所有适用的标签**（类型 + 插件特性 + 集成 + 平台 + 优先级）
             - 将所有 shell 变量引用为 "${VAR}"（带引号和花括号）
+            - 创建标签时提供合适的颜色和描述
+            - 根据 issue 的具体内容生成最合适的标签
 
       - name: '发布 Issue 分类失败评论'
         if: |-

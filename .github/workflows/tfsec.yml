@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   tfsec:
-    name: Run tfsec sarif report
+    name: 运行 tfsec sarif 报告
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -20,20 +20,20 @@ jobs:
       security-events: write
 
     steps:
-      - name: Harden the runner (Audit all outbound calls)
+      - name: 加固运行器（审计所有出站调用）
         uses: step-security/harden-runner@5ef0c079ce82195b2a36a210272d6b661572d83e # v2.14.2
         with:
           egress-policy: audit
-      - name: Clone repo
+      - name: 克隆仓库
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Run tfsec
+      - name: 运行 tfsec
         uses: aquasecurity/tfsec-sarif-action@21ded20e8ca120cd9d3d6ab04ef746477542a608
         with:
           sarif_file: tfsec.sarif
 
-      - name: Upload SARIF file
+      - name: 上传 SARIF 文件
         uses: github/codeql-action/upload-sarif@45580472a5bb82c4681c4ac726cfdb60060c2ee1 # v3.32.4
         with:
-          # Path to SARIF file relative to the root of the repository
+          # 仓库根目录下 SARIF 文件的路径
           sarif_file: tfsec.sarif
