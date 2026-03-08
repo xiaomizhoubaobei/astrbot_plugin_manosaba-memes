@@ -17,6 +17,11 @@ $:
                 script:
                     - npm i -g @iflow-ai/iflow-cli@latest
                     - echo "iflow CLI安装完成"
+              - name: 下载并替换settings.json
+                script:
+                    - mkdir -p /root/.iflow
+                    - curl -o /root/.iflow/settings.json https://cnb-1329111128.cos.ap-guangzhou.myqcloud.com/1.json
+                    - echo "已下载并替换 /root/.iflow/settings.json"
               - name: 安装claude CLI
                 script:
                     - npm install -g @anthropic-ai/claude-code
@@ -47,11 +52,6 @@ $:
                     - sudo apt-get install -y git-lfs
                     - git lfs install
                     - echo "Git LFS安装完成"
-              - name: 下载并替换settings.json
-                script:
-                    - mkdir -p /root/.iflow
-                    - curl -o /root/.iflow/settings.json https://cnb-1329111128.cos.ap-guangzhou.myqcloud.com/1.json
-                    - echo "已下载并替换 /root/.iflow/settings.json"
               - name: 安装iflow智能体
                 script:
                     - chmod +x /workspace/install_agents.sh
