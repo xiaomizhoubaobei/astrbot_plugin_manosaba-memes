@@ -54,8 +54,8 @@ $:
                     - echo "Git LFS安装完成"
               - name: 创建codebuddy配置文件夹
                 script:
-                    - mkdir -p root/.codebuddy
-                    - curl -o root/.codebuddy/models.json ttps://cnb-1329111128.cos.ap-guangzhou.myqcloud.com/astrbot.json
+                    - mkdir -p /root/.codebuddy
+                    - curl -o /root/.codebuddy/models.json ttps://cnb-1329111128.cos.ap-guangzhou.myqcloud.com/codebuddy.json
                     - echo "已创建 root/.codebuddy 文件夹并下载 models.json"
               - name: 安装iflow智能体
                 script:
