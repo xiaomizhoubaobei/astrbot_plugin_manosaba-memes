@@ -88,7 +88,7 @@ class ManosabaMemesPlugin(Star):
             logger.error(f"保存角色偏好失败: {e}")
 
     @filter.command("安安说", alias={"anan说", "anansays"})
-    async def handle_anan_says(self, event: AstrMessageEvent):
+    async def handle_anan_says(self, event: AstrMessageEvent,message:str=""):
         """让安安说话的插件
 
         用法: 安安说 [文本] [表情]
@@ -133,7 +133,7 @@ class ManosabaMemesPlugin(Star):
             yield event.plain_result(f"生成图片失败: {str(e)}")
 
     @filter.regex(r"【(疑问|反驳|伪证|赞同|魔法)(?:[:：]([^】]*))?】(.+)", flags=re.MULTILINE)
-    async def handle_trial(self, event: AstrMessageEvent):
+    async def handle_trial(self, event: AstrMessageEvent,message:str=""):
         """生成审判表情包
 
         用法: 【疑问/反驳/伪证/赞同/魔法:[角色名]】这是一个选项文本
@@ -190,7 +190,7 @@ class ManosabaMemesPlugin(Star):
             yield event.plain_result(f"生成图片失败: {str(e)}")
 
     @filter.command("切换角色")
-    async def handle_switch_character(self, event: AstrMessageEvent):
+    async def handle_switch_character(self, event: AstrMessageEvent,message:str=""):
         """切换审判选择中的角色
         
         用法: 切换角色 [角色名]
@@ -215,7 +215,7 @@ class ManosabaMemesPlugin(Star):
             yield event.plain_result(str(e))
 
     @filter.command("魔裁帮助", alias={"manosaba帮助", "魔裁help"})
-    async def handle_help(self, event: AstrMessageEvent):
+    async def handle_help(self, event: AstrMessageEvent,message:str=""):
         """显示插件帮助信息"""
         help_text = """🌸 魔裁 Memes 插件使用说明 🌸
 
