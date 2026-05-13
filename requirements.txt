@@ -1,1 +1,1 @@
-sketchbook-py>=0.2.1
+Pillow>=10.0.0
