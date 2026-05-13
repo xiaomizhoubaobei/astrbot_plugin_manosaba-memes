@@ -200,6 +200,16 @@ def _merge_bracket_with_next_text(lines: List[str], max_chars_per_line: int) -> 
     while i < len(lines):
         current_line = lines[i]
 
+        if i + 1 < len(lines):
+            next_line = lines[i + 1]
+
+            if _is_bracket_only(next_line):
+                merged = current_line + next_line
+                if len(merged) <= max_chars_per_line * 1.5:
+                    result.append(merged)
+                    i += 2
+                    continue
+
         if i + 1 < len(lines) and _is_bracket_only(current_line):
             next_line = lines[i + 1]
             merged = current_line + next_line
