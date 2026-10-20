@@ -6,9 +6,49 @@
 - get_character: 角色名到 Character 枚举的转换
 """
 
+import re
 from typing import Optional
 
-from .models import Statement, Character
+from .models import Statement, Character, Option
+from .constants import FACE_WHITELIST, MAX_ANAN_TEXT_LENGTH, MAX_OPTIONS_COUNT
+
+
+# Compile flags into the pattern: AstrBot's regex decorator does not apply a
+# separate flags keyword to RegexFilter.
+TRIAL_TRIGGER = re.compile(r"^\s*【(?:疑问|反驳|伪证|赞同|魔法)(?:[:：][^】]*)?】")
+TRIAL_LINE = re.compile(r"【(疑问|反驳|伪证|赞同|魔法)(?:[:：]([^】]*))?】(.*)")
+
+
+def parse_anan(content: str) -> tuple[str, Optional[str]]:
+    content = content.strip()
+    parts = content.rsplit(None, 1)
+    face = None
+    if len(parts) == 2 and parts[1] in FACE_WHITELIST:
+        content, face = parts
+    text = content.replace("\\n", "\n").strip()
+    if not text:
+        raise ValueError("请输入要写在素描本上的文本")
+    if len(text) > MAX_ANAN_TEXT_LENGTH:
+        raise ValueError(f"安安说文本最多支持 {MAX_ANAN_TEXT_LENGTH} 个字符")
+    return text, face
+
+
+def parse_trial(message: str) -> list[Option]:
+    lines = [line.strip() for line in message.splitlines() if line.strip()]
+    if not lines:
+        raise ValueError("请至少输入一个选项")
+    if len(lines) > MAX_OPTIONS_COUNT:
+        raise ValueError(f"选项数量过多，最多支持 {MAX_OPTIONS_COUNT} 个选项")
+    options = []
+    for index, line in enumerate(lines, 1):
+        match = TRIAL_LINE.fullmatch(line)
+        if not match:
+            raise ValueError(f"第 {index} 行格式错误，请使用：【疑问/反驳/伪证/赞同/魔法:角色名】文本")
+        statement, arg, text = match.groups()
+        if arg is not None and statement != "魔法":
+            raise ValueError(f"第 {index} 行只有魔法类型需要指定角色名")
+        options.append(Option(get_statement(statement, arg), text.replace("\\n", "\n")))
+    return options
 
 
 def _normalize_text(text: str) -> str:
@@ -152,6 +192,9 @@ def get_character(character: str) -> Character:
     mapping = {
         "艾玛": Character.EMA,
         "希罗": Character.HIRO,
+        # Older versions persist enum values, not the Chinese display names.
+        "Ema": Character.EMA,
+        "Hiro": Character.HIRO,
     }
     
     # 使用 .get() 方法，如果键不存在则抛出清晰的 ValueError

@@ -1,1 +1,3 @@
 sketchbook-py>=0.2.1,<1.0.0
+Pillow>=10.4.0,<13
+regex>=2024.11.6
