@@ -1,6 +1,8 @@
-import math
 from pathlib import Path
 from typing import Optional, List, Tuple
+from io import BytesIO
+
+from PIL import Image
 
 from sketchbook import (
     Drawer,  # type: ignore
@@ -11,6 +13,7 @@ from sketchbook import (
 )
 
 from .models import Character, Option, Statement
+from .emoji_renderer import has_emoji, render_mixed
 from .constants import (
     FACE_WHITELIST,
     TRIAL_IMAGE_WIDTH,
@@ -20,8 +23,9 @@ from .constants import (
     OPTION_START_X,
     OPTION_START_Y,
     OPTION_END_Y,
-    MAX_PADDING,
     MAX_OPTIONS_COUNT,
+    OPTIONS_PER_PAGE,
+    MAX_ANAN_TEXT_LENGTH,
     STATEMENT_ICON_WIDTH,
     STATEMENT_ICON_HEIGHT,
     STATEMENT_OFFSET_X,
@@ -81,6 +85,24 @@ def draw_anan(text: str, face: Optional[str] = None) -> bytes:
     Returns:
         bytes: The image bytes of the drawn image
     """
+    text = text.replace("\\n", "\n").strip()
+    if not text:
+        raise ValueError("请输入要写在素描本上的文本")
+    if len(text) > MAX_ANAN_TEXT_LENGTH:
+        raise ValueError(f"安安说文本最多支持 {MAX_ANAN_TEXT_LENGTH} 个字符")
+    if has_emoji(text):
+        with Image.open(get_anan_base_image(face)) as source:
+            canvas = source.convert("RGBA")
+        lettering = render_mixed(
+            text, str(PLUGIN_PATH / "assets/fonts/SourceHanSansSC-Bold.otf"),
+            ANAN_REGION_WIDTH, ANAN_REGION_HEIGHT, max_font_size=60,
+        )
+        canvas.alpha_composite(lettering, (ANAN_REGION_X, ANAN_REGION_Y))
+        with Image.open(PLUGIN_PATH / "assets/anan/base_overlay.png") as overlay:
+            canvas.alpha_composite(overlay.convert("RGBA"))
+        result = BytesIO()
+        canvas.save(result, format="PNG")
+        return result.getvalue()
     drawer = TextFitDrawer(
         base_image=get_anan_base_image(face),
         font=str(PLUGIN_PATH / "assets/fonts/SourceHanSansSC-Bold.otf"),
@@ -140,55 +162,20 @@ def get_statement_image(statement: Statement) -> str:
 
 
 def get_option_coordinates(number: int) -> List[Tuple[int, int]]:
-    """Get the coordinates for drawing options based on the number of options
-    
-    布局算法说明：
-    - 选项在审判界面中从上到下排列
-    - 确保选项之间至少有 20px 的间距，避免挤在一起
-    - 在可用范围内垂直居中显示所有选项
-    
-    Args:
-        number (int): The number of options
+    """Place up to three options without clipping panels or statement icons.
 
-    Returns:
-        List[Tuple[int, int]]: A list of (x, y) coordinates for each option
-        
-    Raises:
-        ValueError: If number of options exceeds the maximum limit
+    Longer requests are paginated by the handler to retain readable text.
     """
-    # 前置校验：确保选项数量在合理范围内
-    if number > MAX_OPTIONS_COUNT:
-        raise ValueError(f"选项数量过多，最多支持 {MAX_OPTIONS_COUNT} 个选项")
-    
-    if number <= 0:
-        raise ValueError("选项数量必须大于 0")
-    
-    # 最小间距（确保选项不会挤在一起）
-    MIN_SPACING = 20
-    
-    # 计算所需的总高度（选项高度 + 最小间距）
-    total_layout_height = number * OPTION_HEIGHT + (number - 1) * MIN_SPACING
-    
-    # 计算可用高度
-    available_height = OPTION_END_Y - OPTION_START_Y
-    
-    if number == 1:
-        # 单个选项，垂直居中
-        start_y = OPTION_START_Y + (available_height - OPTION_HEIGHT) // 2
-        return [(OPTION_START_X, start_y)]
-    
-    # 计算起始Y坐标，使整体布局垂直居中
-    # 如果总高度超过可用高度，从 OPTION_START_Y 开始
-    if total_layout_height > available_height:
-        start_y = OPTION_START_Y
-    else:
-        start_y = OPTION_START_Y + (available_height - total_layout_height) // 2
-    
-    # 生成选项坐标，每个选项之间保持 MIN_SPACING 间距
-    return [
-        (OPTION_START_X, start_y + i * (OPTION_HEIGHT + MIN_SPACING))
-        for i in range(number)
-    ]
+    if not 1 <= number <= OPTIONS_PER_PAGE:
+        raise ValueError(f"每张图片支持 1～{OPTIONS_PER_PAGE} 个选项，请分页绘制")
+    # An icon extends 43px above its panel; 54px keeps it clear of the
+    # preceding panel. Center around the original single-option position.
+    spacing = 54
+    total_height = number * OPTION_HEIGHT + (number - 1) * spacing
+    center_y = (OPTION_START_Y + OPTION_END_Y) // 2
+    start_y = center_y - total_height // 2
+    return [(OPTION_START_X, start_y + i * (OPTION_HEIGHT + spacing))
+            for i in range(number)]
 
 
 def draw_trial(character: Character, options: List[Option]) -> bytes:
@@ -211,6 +198,10 @@ def draw_trial(character: Character, options: List[Option]) -> bytes:
     if len(options) == 0:
         raise ValueError("选项数量不能为 0")
     
+    coordinates = get_option_coordinates(len(options))
+    if not isinstance(character, Character):
+        raise ValueError("无效的审判角色")
+
     # Background and character
     drawer = Drawer(
         base_image=str(PLUGIN_PATH / "assets/trial/black.png"),
@@ -230,16 +221,19 @@ def draw_trial(character: Character, options: List[Option]) -> bytes:
         style=PasteStyle(keep_alpha=False),
     )
 
-    # Options, texts, and statements
-    coordinates = get_option_coordinates(len(options))
+    # Keep the original renderer for plain text. Emoji text is composited in
+    # its bounded region after the scene, without touching character artwork.
+    emoji_regions = []
     for option, (x, y) in zip(options, coordinates):
-        drawer = (
-            drawer.paste_image(
+        drawer = drawer.paste_image(
                 str(PLUGIN_PATH / "assets/trial/option.png"),
                 region=DrawerRegion(x, y, x + OPTION_WIDTH, y + OPTION_HEIGHT),
                 style=PasteStyle(keep_alpha=False),
             )
-            .draw_text(
+        if has_emoji(option.text):
+            emoji_regions.append((option.text, x + TEXT_OFFSET_X, y + TEXT_OFFSET_Y))
+        else:
+            drawer = drawer.draw_text(
                 text=option.text,
                 region=DrawerRegion(
                     x + TEXT_OFFSET_X, 
@@ -253,7 +247,7 @@ def draw_trial(character: Character, options: List[Option]) -> bytes:
                     max_font_height=MAX_FONT_HEIGHT,
                 ),
             )
-            .paste_image(
+        drawer = drawer.paste_image(
                 get_statement_image(option.statement),
                 region=DrawerRegion(
                     x + STATEMENT_OFFSET_X, 
@@ -263,6 +257,18 @@ def draw_trial(character: Character, options: List[Option]) -> bytes:
                 ),
                 style=PasteStyle(keep_alpha=False),
             )
+    result = drawer.finish()
+    if not emoji_regions:
+        return result
+    with Image.open(BytesIO(result)) as source:
+        canvas = source.convert("RGBA")
+    for text, x, y in emoji_regions:
+        lettering = render_mixed(
+            text, str(PLUGIN_PATH / "assets/fonts/SourceHanSerifSC.otf"),
+            TEXT_WIDTH, TEXT_HEIGHT, color=TEXT_COLOR,
+            bracket_color=BRACKET_COLOR, max_font_size=MAX_FONT_HEIGHT,
         )
-
-    return drawer.finish()
+        canvas.alpha_composite(lettering, (x, y))
+    output = BytesIO()
+    canvas.save(output, format="PNG")
+    return output.getvalue()

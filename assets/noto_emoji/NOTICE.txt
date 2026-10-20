@@ -1,0 +1,6 @@
+Noto Emoji 2D imagery. Copyright Google and contributors.
+Source: googlefonts/noto-emoji, commit e20cbc2bbec1926686be9f9bee7d1d2cfa1fea0e.
+Images: Apache-2.0; regional flag exceptions: LICENSE-FLAGS.txt.
+PNG images are copied unmodified. Regional flags were rasterized from
+the same commit waved SVG sources with resvg-py 0.5.0 at 128x128.
+See manifest.json for source and output hashes. No Noto fonts are bundled.

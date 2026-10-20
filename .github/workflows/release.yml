@@ -63,32 +63,10 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-      # 5. 创建插件目录
-      - name: 创建插件目录
+      # Complete, validated runtime archive (modules, assets, fonts, license).
+      - name: 创建完整插件安装包
         run: |
-          PLUGIN_NAME=${{ steps.get_info.outputs.plugin_name }}
-          mkdir -p "$PLUGIN_NAME"
-
-      # 6. 复制插件文件到构建目录
-      - name: 复制插件文件
-        run: |
-          PLUGIN_NAME=${{ steps.get_info.outputs.plugin_name }}
-          # 复制主程序文件
-          cp main.py "$PLUGIN_NAME"/
-          # 复制配置文件和依赖文件
-          cp metadata.yaml requirements.txt "$PLUGIN_NAME"/ || true
-          # 复制所有处理器文件
-          cp *_handler.py command_utils.py "$PLUGIN_NAME"/ || true
-          # 复制 logo 文件
-          cp logo.png "$PLUGIN_NAME"/ || true
-          # 复制子目录
-          cp -r baidu "$PLUGIN_NAME"/ || true
-
-      # 7. 打包为 zip 文件
-      - name: 创建 zip 包
-        run: |
-          PLUGIN_NAME=${{ steps.get_info.outputs.plugin_name }}
-          zip -r "$PLUGIN_NAME".zip "$PLUGIN_NAME"/
+          python build_release.py --output "${{ steps.get_info.outputs.plugin_name }}.zip"
 
       # 8. 生成 Release Notes
       - name: Generate Release Notes

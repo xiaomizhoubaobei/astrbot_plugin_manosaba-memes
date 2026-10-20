@@ -84,14 +84,14 @@ class Option:
             )
         
         # 验证 text 不为空
-        if not self.text or not self.text.strip():
-            raise ValueError("text cannot be empty or whitespace only")
+        if not isinstance(self.text, str) or not self.text.strip():
+            raise ValueError("选项文本不能为空")
         
         # 验证 text 长度
         text_stripped = self.text.strip()
         if len(text_stripped) > MAX_OPTION_TEXT_LENGTH:
             raise ValueError(
-                f"text length exceeds maximum limit of {MAX_OPTION_TEXT_LENGTH} characters"
+                f"每个选项的文本最多支持 {MAX_OPTION_TEXT_LENGTH} 个字符"
             )
         
         # 自动去除首尾空格
