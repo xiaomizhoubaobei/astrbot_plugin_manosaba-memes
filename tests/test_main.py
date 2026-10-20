@@ -1,4 +1,4 @@
-"""main.py 指令处理单测（stub astrbot + stub drawer）。"""
+"""main.py 指令处理单测（stub astrbot）。"""
 
 import json
 from pathlib import Path
@@ -12,25 +12,38 @@ from astrbot_plugin_manosaba_memes.models import Character
 
 
 class FakeEvent:
-    """最小事件替身：记录 plain/image 结果。"""
+    """最小事件替身：记录 plain/chain 结果。"""
 
-    def __init__(self, message_str: str, session: str = "session-1") -> None:
+    def __init__(
+        self,
+        message_str: str,
+        session: str = "session-1",
+        user: str = "u1",
+        platform: str = "qq",
+    ) -> None:
         self.message_str = message_str
         self._session = session
+        self._user = user
+        self.unified_msg_origin = f"{platform}:GroupMessage:{session}"
         self.results: List[Any] = []
 
     def plain_result(self, text: str) -> Any:
         self.results.append(("plain", text))
         return self.results[-1]
 
-    def image_result(self, path: str) -> Any:
-        self.results.append(("image", path))
-        # 模拟宿主消费完图片后立即删除
-        Path(path).unlink(missing_ok=True)
+    def chain_result(self, chain: Any) -> Any:
+        self.results.append(("chain", chain))
         return self.results[-1]
 
     def get_session_id(self) -> str:
         return self._session
+
+    def get_sender_id(self) -> str:
+        return self._user
+
+    @property
+    def key(self) -> str:
+        return json.dumps([self.unified_msg_origin, self._user], ensure_ascii=False)
 
     @property
     def last(self) -> Any:
@@ -44,7 +57,7 @@ async def _drain(agen: Any) -> List[Any]:
 
 @pytest.fixture
 def plugin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ManosabaMemesPlugin:
-    monkeypatch.setattr(main_mod.StarTools, "get_data_dir", lambda: tmp_path)
+    monkeypatch.setattr(main_mod.StarTools, "get_data_dir", lambda name: tmp_path)
     p = ManosabaMemesPlugin(None)
     p.data_file = tmp_path / "character_preferences.json"
     return p
@@ -55,21 +68,24 @@ def plugin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ManosabaMemesPlug
 
 async def test_initialize_creates_data_file(plugin: ManosabaMemesPlugin) -> None:
     await plugin.initialize()
+    assert plugin.data_file is not None
     assert plugin.data_file.parent.exists()
 
 
 async def test_load_preferences_ignores_invalid_names(
     plugin: ManosabaMemesPlugin,
 ) -> None:
+    event = FakeEvent("", session="s1")
+    other = FakeEvent("", session="s2")
     assert plugin.data_file is not None
     plugin.data_file.write_text(
-        json.dumps({"s1": "希罗", "s2": "不存在的角色"}, ensure_ascii=False),
+        json.dumps({event.key: "希罗", other.key: "不存在的角色"}, ensure_ascii=False),
         encoding="utf-8",
     )
     await plugin._load_character_preferences()
-    assert plugin.character_map["s1"] is Character.HIRO
-    # 无效名字走 defaultdict 默认值
-    assert plugin.character_map["s2"] is Character.EMA
+    assert plugin.character_map[event.key] is Character.HIRO
+    # 无效名字被忽略，不写入 map
+    assert other.key not in plugin.character_map
 
 
 async def test_load_preferences_handles_broken_json(
@@ -82,16 +98,17 @@ async def test_load_preferences_handles_broken_json(
 
 
 async def test_save_and_reload_preferences(plugin: ManosabaMemesPlugin) -> None:
-    plugin.character_map["s1"] = Character.HIRO
-    await plugin._save_character_preferences()
+    event = FakeEvent("", session="s1")
+    plugin._write_preferences({event.key: Character.HIRO.value})
     assert plugin.data_file is not None
-    assert json.loads(plugin.data_file.read_text(encoding="utf-8")) == {"s1": "Hiro"}
+    assert json.loads(plugin.data_file.read_text(encoding="utf-8")) == {
+        event.key: "Hiro"
+    }
 
     plugin.character_map.clear()
     await plugin._load_character_preferences()
-    # 注意：_save 写英文 value（"Hiro"），而 _load 经 get_character 仅认中文名，
-    # 故此处读回会落回默认值 EMA —— 该存/读口径不一致已在汇报中提示。
-    assert plugin.character_map["s1"] is Character.EMA
+    # get_character 兼容旧的英文 value
+    assert plugin.character_map[event.key] is Character.HIRO
 
 
 # ── 安安说 ─────────────────────────────────────────────────────────────────
@@ -108,22 +125,21 @@ async def test_handle_anan_says_with_face(
 ) -> None:
     event = FakeEvent(f"安安说 你好 {face}")
     out = await _drain(plugin.handle_anan_says(event))
-    assert out[0][0] == "image"
+    assert out[0][0] == "chain" and len(out[0][1]) == 1
 
 
 async def test_handle_anan_says_unknown_face_treated_as_text(
     plugin: ManosabaMemesPlugin,
 ) -> None:
     event = FakeEvent("安安说 你好 随便")
-    # 未知表情应并入文本，仍正常出图
     out = await _drain(plugin.handle_anan_says(event))
-    assert out[0][0] == "image"
+    assert out[0][0] == "chain"
 
 
 async def test_handle_anan_says_newline_escape(plugin: ManosabaMemesPlugin) -> None:
     event = FakeEvent(r"安安说 第一行\n第二行")
     out = await _drain(plugin.handle_anan_says(event))
-    assert out[0][0] == "image"
+    assert out[0][0] == "chain"
 
 
 async def test_handle_anan_says_reports_draw_failure(
@@ -141,29 +157,33 @@ async def test_handle_anan_says_reports_draw_failure(
 
 
 async def test_handle_trial_single_option(plugin: ManosabaMemesPlugin) -> None:
-    event = FakeEvent("【疑问】这是疑问")
-    out = await _drain(plugin.handle_trial(event))
-    assert out[0][0] == "image"
+    out = await _drain(plugin.handle_trial(FakeEvent("【疑问】这是疑问")))
+    assert out[0][0] == "chain" and len(out[0][1]) == 1
 
 
 async def test_handle_trial_multiple_options(plugin: ManosabaMemesPlugin) -> None:
     event = FakeEvent("【疑问】第一\n【反驳】第二\n【赞同】第三")
     out = await _drain(plugin.handle_trial(event))
-    assert out[0][0] == "image"
+    assert out[0][0] == "chain" and len(out[0][1]) == 1
+
+
+async def test_handle_trial_paginates(plugin: ManosabaMemesPlugin) -> None:
+    msg = "\n".join(f"【疑问】选项{i}" for i in range(5))
+    out = await _drain(plugin.handle_trial(FakeEvent(msg)))
+    # 每页最多 3 项，5 项分成 2 页
+    assert out[0][0] == "chain" and len(out[0][1]) == 2
 
 
 async def test_handle_trial_magic_with_arg(plugin: ManosabaMemesPlugin) -> None:
-    event = FakeEvent("【魔法: 诺亚】液体操控")
-    out = await _drain(plugin.handle_trial(event))
-    assert out[0][0] == "image"
+    out = await _drain(plugin.handle_trial(FakeEvent("【魔法: 诺亚】液体操控")))
+    assert out[0][0] == "chain"
 
 
 async def test_handle_trial_bad_statement_reports_error(
     plugin: ManosabaMemesPlugin,
 ) -> None:
-    # 正则不匹配 => 没有选项
     out = await _drain(plugin.handle_trial(FakeEvent("随便说点什么")))
-    assert out[0][0] == "plain" and "请至少输入一个选项" in out[0][1]
+    assert out[0][0] == "plain" and "格式错误" in out[0][1]
 
 
 async def test_handle_trial_invalid_magic_reports_error(
@@ -179,29 +199,7 @@ async def test_handle_trial_too_many_options(plugin: ManosabaMemesPlugin) -> Non
     assert out[0][0] == "plain" and "最多支持" in out[0][1]
 
 
-async def test_handle_trial_value_error_reports(
-    plugin: ManosabaMemesPlugin, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    def boom(*args: Any, **kwargs: Any) -> bytes:
-        raise ValueError("业务错误")
-
-    monkeypatch.setattr(main_mod, "draw_trial", boom)
-    out = await _drain(plugin.handle_trial(FakeEvent("【疑问】文本")))
-    assert out[0] == ("plain", "业务错误")
-
-
-async def test_handle_trial_overflow_error_reports(
-    plugin: ManosabaMemesPlugin, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    def boom(*args: Any, **kwargs: Any) -> bytes:
-        raise OverflowError("overflow")
-
-    monkeypatch.setattr(main_mod, "draw_trial", boom)
-    out = await _drain(plugin.handle_trial(FakeEvent("【疑问】文本")))
-    assert out[0] == ("plain", "选项过多，请减少选项数量")
-
-
-async def test_handle_trial_generic_error_reports(
+async def test_handle_trial_draw_failure_reports(
     plugin: ManosabaMemesPlugin, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     def boom(*args: Any, **kwargs: Any) -> bytes:
@@ -229,12 +227,12 @@ async def test_switch_character_success(
 ) -> None:
     event = FakeEvent(f"切换角色 {name}", session="s9")
     out = await _drain(plugin.handle_switch_character(event))
-    assert out[0] == ("plain", f"已切换角色为 {name}")
-    assert plugin.character_map["s9"] is expected
-    # 切换后偏好已落盘
+    assert out[0][0] == "plain" and f"已切换角色为 {name}" in out[0][1]
+    assert plugin.character_map[event.key] is expected
     assert plugin.data_file is not None
     assert (
-        json.loads(plugin.data_file.read_text(encoding="utf-8"))["s9"] == expected.value
+        json.loads(plugin.data_file.read_text(encoding="utf-8"))[event.key]
+        == expected.value
     )
 
 
@@ -248,8 +246,6 @@ async def test_handle_help(plugin: ManosabaMemesPlugin) -> None:
     assert out[0][0] == "plain" and "安安说" in out[0][1] and "审判表情包" in out[0][1]
 
 
-async def test_terminate_saves(plugin: ManosabaMemesPlugin) -> None:
-    plugin.character_map["s1"] = Character.HIRO
+async def test_terminate(plugin: ManosabaMemesPlugin) -> None:
+    # terminate 仅记录卸载日志，不应抛异常
     await plugin.terminate()
-    assert plugin.data_file is not None
-    assert json.loads(plugin.data_file.read_text(encoding="utf-8")) == {"s1": "Hiro"}

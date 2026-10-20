@@ -42,7 +42,7 @@ def test_option_rejects_blank_text(bad_text: str) -> None:
 
 
 def test_option_rejects_too_long_text() -> None:
-    with pytest.raises(ValueError, match="exceeds maximum limit"):
+    with pytest.raises(ValueError, match="最多支持"):
         Option(Statement.AGREEMENT, "x" * (MAX_OPTION_TEXT_LENGTH + 1))
 
 

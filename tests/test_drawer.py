@@ -8,6 +8,7 @@ from astrbot_plugin_manosaba_memes.constants import (
     OPTION_HEIGHT,
     OPTION_START_X,
     OPTION_START_Y,
+    TRIAL_IMAGE_HEIGHT,
 )
 from astrbot_plugin_manosaba_memes.drawer import (
     PLUGIN_PATH,
@@ -42,7 +43,11 @@ def test_draw_anan_returns_bytes() -> None:
     result = draw_anan("你好", face="开心")
     assert isinstance(result, bytes)
     assert result.startswith(b"\x89PNG")
-    assert "你好" in result.decode("utf-8", errors="ignore")
+    # 真实渲染结果是合法 PNG，可用 Pillow 打开
+    from io import BytesIO
+    from PIL import Image
+    with Image.open(BytesIO(result)) as image:
+        image.load()
 
 
 @pytest.mark.parametrize(
@@ -80,20 +85,19 @@ def test_get_option_coordinates_spacing_and_centered() -> None:
     coords = get_option_coordinates(3)
     assert len(coords) == 3
     ys = [y for _, y in coords]
-    # 间距 20px：相邻 y 固定相差 OPTION_HEIGHT + 20
-    step = OPTION_HEIGHT + 20
+    # 新版布局：54px 间距，保证图标不与上一项重叠
+    step = OPTION_HEIGHT + 54
     assert ys[1] - ys[0] == step
     assert ys[2] - ys[1] == step
-    # 3 项总高 3*216+2*20=688 < 可用高度 416? 否 —— 实际超出，故从顶部起排
-    # 无论居中或顶对齐，首项都不早于起点，末项步进一致
-    assert ys[0] >= OPTION_START_Y
-    assert ys[-1] == ys[0] + 2 * step
+    # 图标向上伸出 43px，首项只需保证图标不越过画布顶部
+    assert ys[0] - 43 >= 0
+    assert ys[-1] + OPTION_HEIGHT <= TRIAL_IMAGE_HEIGHT
 
 
 def test_get_option_coordinates_overflow_starts_at_top() -> None:
-    # 选项多到放不下时从顶部开始排布（total_layout_height > available_height）
-    coords = get_option_coordinates(MAX_OPTIONS_COUNT)
-    assert coords[0][1] == OPTION_START_Y
+    # 新版每页最多 3 项，超出应拒绝（由 handler 负责分页）
+    with pytest.raises(ValueError):
+        get_option_coordinates(MAX_OPTIONS_COUNT)
 
 
 def _options(count: int) -> list[Option]:
@@ -103,13 +107,11 @@ def _options(count: int) -> list[Option]:
 @pytest.mark.parametrize("character", [Character.EMA, Character.HIRO])
 def test_draw_trial_by_character(character: Character) -> None:
     result = draw_trial(character, _options(2))
-    text = result.decode("utf-8", errors="ignore")
-    # 角色图片被 paste
-    expected_img = "ema.png" if character == Character.EMA else "hiro.png"
-    assert expected_img in text
-    # 选项文本与陈述图标都进入绘制流程
-    assert "选项0" in text and "选项1" in text
-    assert "doubt.png" in text
+    from io import BytesIO
+    from PIL import Image
+    with Image.open(BytesIO(result)) as image:
+        image.load()
+        assert image.size == (1260, 1080)
 
 
 def test_draw_trial_rejects_empty_options() -> None:

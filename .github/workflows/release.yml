@@ -107,85 +107,12 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-      # 5. 创建插件目录（plugin_name 经 env 传入，禁止直接内插进 run）
-      - name: 创建插件目录
+      # 5. 通过统一构建入口生成完整插件安装包（含素材校验）
+      - name: 创建完整插件安装包
         env:
           PLUGIN_NAME: ${{ steps.get_info.outputs.plugin_name }}
         run: |
-          mkdir -p "$PLUGIN_NAME"
-
-      # 6. 复制插件文件到构建目录（plugin_name 经 env 传入，禁止直接内插进 run）
-      #
-      # ⚠️ 这里的 cp 白名单即**发布包内容的唯一来源**（第 7.1 步会逐条断言）。
-      #    一律不加 `|| true`：少拷一个必需文件必须当场失败，而不是产出一个
-      #    「缺文件却发布成功」的包，让使用者装上才发现 import 报错。
-      - name: 复制插件文件
-        env:
-          PLUGIN_NAME: ${{ steps.get_info.outputs.plugin_name }}
-        run: |
-          # 插件必需文件（缺失即失败）
-          cp main.py __init__.py constants.py drawer.py models.py utils.py \
-            metadata.yaml requirements.txt "$PLUGIN_NAME/"
-          # 图片素材（drawer.py 运行时按 assets/ 相对路径读取，属必需）
-          cp -r assets "$PLUGIN_NAME/"
-          # 插件图标（可选，缺失不影响运行）
-          cp logo.png "$PLUGIN_NAME/" || true
-
-      # 7. 打包为 zip 文件（plugin_name 经 env 传入，禁止直接内插进 run）
-      - name: 创建 zip 包
-        env:
-          PLUGIN_NAME: ${{ steps.get_info.outputs.plugin_name }}
-        run: |
-          # `-FS`：刷新模式，同名 zip 已存在时按内容同步增删，避免残留旧条目。
-          zip -r -FS "${PLUGIN_NAME}.zip" "$PLUGIN_NAME/" -x '*__pycache__*' '*.pyc'
-          echo "== 发布包内容 =="
-          unzip -l "${PLUGIN_NAME}.zip"
-
-      # 7.1 校验发布包边界：只允许白名单条目，必需文件不得缺失
-      - name: 校验发布包边界
-        env:
-          PLUGIN_NAME: ${{ steps.get_info.outputs.plugin_name }}
-        run: |
-          set -uo pipefail
-          ARTIFACT="${PLUGIN_NAME}.zip"
-          # awk 取第 4 列文件名；去掉目录行与表头 / 分隔行，再滤掉空行，
-          # 否则首尾空行会让逐行断言失去意义
-          LIST=$(unzip -l "$ARTIFACT" | awk '{print $4}' | grep -v '/$' \
-            | grep -vE '^(Name|-+)?$' || true)
-
-          # 1) 必需文件必须在包内
-          for required in main.py __init__.py constants.py drawer.py models.py utils.py \
-                          metadata.yaml requirements.txt; do
-            echo "$LIST" | grep -qx "${PLUGIN_NAME}/$required" \
-              || { echo "::error::发布包缺少必需文件: $required"; exit 1; }
-          done
-
-          # 2) assets/ 素材必须在包内（drawer.py 运行时依赖）
-          echo "$LIST" | grep -q "^${PLUGIN_NAME}/assets/" \
-            || { echo "::error::发布包缺少 assets/ 图片素材"; exit 1; }
-
-          # 3) 包内只能出现白名单条目：开发 / CI 资产（install_gpg_keys.sh、
-          #    .github/、docs/、previews/ 等）一旦混进包，会被铺到使用者的
-          #    插件目录里，其中拉取私钥、改写全局 git 配置的脚本若被误执行，
-          #    风险由使用者承担。
-          while IFS= read -r entry; do
-            case "$entry" in
-              "${PLUGIN_NAME}/main.py"|"${PLUGIN_NAME}/__init__.py"| \
-              "${PLUGIN_NAME}/constants.py"|"${PLUGIN_NAME}/drawer.py"| \
-              "${PLUGIN_NAME}/models.py"|"${PLUGIN_NAME}/utils.py"| \
-              "${PLUGIN_NAME}/metadata.yaml"|"${PLUGIN_NAME}/requirements.txt"| \
-              "${PLUGIN_NAME}/logo.png")
-                continue
-                ;;
-              "${PLUGIN_NAME}/assets/"*)
-                continue
-                ;;
-            esac
-            echo "::error::发布包内混入了白名单之外的条目: ${entry}"
-            exit 1
-          done <<< "$LIST"
-
-          echo "发布包边界校验通过"
+          python build_release.py --output "${PLUGIN_NAME}.zip"
 
       # 8. 生成 Release Notes
       - name: 生成 Release Notes
