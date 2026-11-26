@@ -1,7 +1,6 @@
 """drawer.py 单测：路径白名单、坐标布局与绘图流程（stub sketchbook）。"""
 
 import pytest
-
 from astrbot_plugin_manosaba_memes.constants import (
     FACE_WHITELIST,
     MAX_OPTIONS_COUNT,

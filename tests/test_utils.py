@@ -1,7 +1,6 @@
 """utils.py 文本标准化与枚举转换单测。"""
 
 import pytest
-
 from astrbot_plugin_manosaba_memes.models import Character, Statement
 from astrbot_plugin_manosaba_memes.utils import (
     _normalize_text,

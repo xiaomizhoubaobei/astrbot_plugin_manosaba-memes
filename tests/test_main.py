@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any, List
 
 import pytest
-
 from astrbot_plugin_manosaba_memes import main as main_mod
 from astrbot_plugin_manosaba_memes.constants import FACE_WHITELIST
 from astrbot_plugin_manosaba_memes.main import ManosabaMemesPlugin
@@ -234,7 +233,9 @@ async def test_switch_character_success(
     assert plugin.character_map["s9"] is expected
     # 切换后偏好已落盘
     assert plugin.data_file is not None
-    assert json.loads(plugin.data_file.read_text(encoding="utf-8"))["s9"] == expected.value
+    assert (
+        json.loads(plugin.data_file.read_text(encoding="utf-8"))["s9"] == expected.value
+    )
 
 
 async def test_switch_character_invalid(plugin: ManosabaMemesPlugin) -> None:
