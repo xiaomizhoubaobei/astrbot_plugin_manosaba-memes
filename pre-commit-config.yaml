@@ -1,0 +1,72 @@
+repos:
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v6.0.0
+  hooks:
+  - id: end-of-file-fixer
+  - id: trailing-whitespace
+  - id: check-yaml
+  - id: check-json
+  - id: check-toml
+  - id: check-added-large-files
+    args: ['--maxkb=10000']
+  - id: detect-private-key
+  - id: check-case-conflict
+  - id: check-merge-conflict
+  - id: check-symlinks
+  - id: mixed-line-ending
+    args: ['--fix=lf']
+- repo: https://github.com/psf/black-pre-commit-mirror
+  rev: 26.10.1
+  hooks:
+  - id: black
+    # 不绑定 language_version：仅要求本机具备任意受支持的 Python，跨版本可跑通
+    args: ['--target-version', 'py313']
+- repo: https://github.com/pycqa/flake8
+  rev: 7.5.0
+  hooks:
+  - id: flake8
+    args: ['--max-line-length=100', '--extend-ignore=E203,W503']
+- repo: https://github.com/pycqa/isort
+  rev: 10.0.0b2
+  hooks:
+  - id: isort
+    args: ['--profile', 'black']
+- repo: https://github.com/pre-commit/mirrors-mypy
+  rev: v2.4.1
+  hooks:
+  - id: mypy
+    additional_dependencies: [types-aiofiles]
+    # ai-audit/ 是 AI 审计示例的「部署源目录」：目录名带连字符，只有被复制并重命名为
+    # ai_audit（下划线）后才成为合法 Python 包。带连字符的目录会被 mypy 判为
+    # 「含 __init__.py 但包名非法」，故按目录排除，不参与类型检查。
+    exclude: '^ai-audit/'
+    args: ['--ignore-missing-imports']
+- repo: https://github.com/pycqa/pydocstyle
+  rev: 6.3.0
+  hooks:
+  - id: pydocstyle
+    args: ['--convention=google']
+    # 与 mypy 口径一致：ai-audit/ 下的 .py 为框架侧说明性模块，不纳入本仓库门禁。
+    exclude: '^ai-audit/'
+- repo: https://github.com/gitleaks/gitleaks
+  rev: v8.30.0
+  hooks:
+  - id: gitleaks
+# 安全与脚本检查：与 StepSecurity 建议对齐（PR #14）。
+# shellcheck 改用 shellcheck-py（language: python，自带二进制）而非上游 jumanjihouse：
+# 后者是 language: script，要求宿主机预装 shellcheck，在 pre-commit.ci 的 runner
+# 镜像里没有该命令，会直接以「This check needs shellcheck」失败。
+- repo: https://github.com/shellcheck-py/shellcheck-py
+  rev: v0.11.0.1-1
+  hooks:
+  - id: shellcheck
+- repo: https://github.com/pylint-dev/pylint
+  rev: v4.1.3
+  hooks:
+  - id: pylint
+    # 只做「真错误」守卫（E 级），不引入风格/设计类存量告警：
+    # pylint 的 C/R/W 与 black、flake8、pydocstyle 大面积重叠，全量启用等于
+    # 给本仓库加一道无人维护的噪声门禁。
+    # E0401/E0402 关闭：依赖（aiohttp）与宿主（astrbot.*）不在本机安装，
+    # 且 src/ 从仓库根被当作普通目录导入，pylint 会误报「相对导入越界」。
+    args: ['--disable=all', '--enable=E', '--disable=E0401,E0402', '--ignore=ai-audit', '--score=n']
