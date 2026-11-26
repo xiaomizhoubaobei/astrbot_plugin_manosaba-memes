@@ -1,6 +1,12 @@
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+from sketchbook import Drawer  # type: ignore
+from sketchbook import DrawerRegion  # type: ignore
+from sketchbook import PasteStyle  # type: ignore
+from sketchbook import TextFitDrawer  # type: ignore
+from sketchbook import TextStyle  # type: ignore
+
 from .constants import (
     ANAN_REGION_HEIGHT,
     ANAN_REGION_WIDTH,
@@ -28,13 +34,6 @@ from .constants import (
     TRIAL_IMAGE_WIDTH,
 )
 from .models import Character, Option, Statement
-from .render_backend import (
-    Drawer,
-    DrawerRegion,
-    PasteStyle,
-    TextFitDrawer,
-    TextStyle,
-)
 
 PLUGIN_PATH = Path(__file__).parent
 

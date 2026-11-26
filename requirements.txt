@@ -1,4 +1,1 @@
-# Python < 3.15：官方提供 sketchbook-py 预构建 wheel（cp38~cp314）。
-sketchbook-py>=0.2.1,<1.0.0; python_version < '3.15'
-# Python 3.15+：上游尚无 cp315 wheel，使用 Pillow 渲染回退。
-Pillow>=11; python_version >= '3.15'
+sketchbook-py>=0.2.1,<1.0.0
