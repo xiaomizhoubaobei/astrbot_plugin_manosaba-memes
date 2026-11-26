@@ -40,7 +40,11 @@ repos:
     # ai_audit（下划线）后才成为合法 Python 包。带连字符的目录会被 mypy 判为
     # 「含 __init__.py 但包名非法」，故按目录排除，不参与类型检查。
     exclude: '^ai-audit/'
-    args: ['--ignore-missing-imports']
+    # 仓库根检出目录名不固定（CI 里是 /code、本地可能是 workspace），默认
+    # mypy 会按目录名推断出 code/tests.pkg_view，与 pytest 的 tests.pkg_view
+    # 冲突并报「Source file found twice」；显式包根让 mypy 以仓库根为基准，
+    # 按 __init__.py 识别 tests 包，模块名与测试导入一致。
+    args: ['--ignore-missing-imports', '--explicit-package-bases']
 - repo: https://github.com/pycqa/pydocstyle
   rev: 6.3.0
   hooks:

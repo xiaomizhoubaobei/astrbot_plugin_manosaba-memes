@@ -70,16 +70,13 @@ jobs:
           # 覆盖率数据文件落到临时目录，避免污染工作区
           COVERAGE_FILE: ${{ runner.temp }}/.coverage
         run: |
-          # 本仓库为「插件根 main.py + src/ 源码包」布局，测试统一以
-          # `from src.xxx import ...` 导入，业务逻辑全部位于 src/，故以 `src`
-          # 为覆盖率计数源（main.py 仅做注册转发，不纳入统计，否则会产生
-          # 「module-not-imported」噪声）。
-          # --source 用「包名」计数，coverage 会写出相对路径（如 src/core/config.py），
-          # 从而正确定位到 GitHub 工作区文件；若误用绝对路径 --source，SF 会退化成
-          # /home/runner/work/... 这类路径，Codecov 固定路径映射后匹配不到文件。
-          python -m coverage run --source=src -m pytest tests -q
-          python -m coverage report -m
-          python -m coverage xml -o coverage.xml
+          # 本仓库是 AstrBot 插件：源码文件（main.py 等）位于仓库根，包名由
+          # tests/pkg_view.py 注册为 astrbot_plugin_manosaba_memes，并不存在 src/ 目录。
+          # 因此不能用 `coverage run --source=src`：src 既不是包也不会被导入，
+          # 结果是「No data was collected」且不生成 coverage.xml，后续上传工件
+          # 只能报 warning。改走仓库自带的 tests.run_coverage：它会先建桩与包视图，
+          # 再以正确包名启动 coverage，跑 pytest 并写出 coverage.xml。
+          python -m tests.run_coverage
 
       # 上报 Codecov：仅在拿到 token（仓库 Secret 或同名 CNB 密钥）时执行。
       # 未配置 token 时跳过上报，仅留存 coverage.xml 工件，不使 CI 失败。

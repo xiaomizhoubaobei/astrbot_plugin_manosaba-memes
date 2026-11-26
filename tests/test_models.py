@@ -1,7 +1,6 @@
 """models.py 数据模型单测。"""
 
 import pytest
-
 from astrbot_plugin_manosaba_memes.models import (
     MAX_OPTION_TEXT_LENGTH,
     Character,

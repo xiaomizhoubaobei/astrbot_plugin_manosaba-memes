@@ -9,12 +9,15 @@ class AstrMessageEvent:
     message_str: str = ""
 
     def plain_result(self, text: str) -> Any:
+        """Return a stub plain-text result."""
         return ("plain", text)
 
     def image_result(self, path: str) -> Any:
+        """Return a stub image result."""
         return ("image", path)
 
     def get_session_id(self) -> str:
+        """Return a stub session identifier."""
         return "session"
 
 

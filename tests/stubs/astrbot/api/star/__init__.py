@@ -25,4 +25,5 @@ class StarTools:
 
     @classmethod
     def get_data_dir(cls) -> Path:
+        """Return the stub data directory."""
         return cls.DATA_DIR

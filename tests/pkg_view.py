@@ -16,7 +16,7 @@ import importlib.util
 import pathlib
 import sys
 from types import ModuleType
-from typing import Any, Optional, Sequence
+from typing import Optional, Sequence
 
 PACKAGE_NAME = "astrbot_plugin_manosaba_memes"
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]

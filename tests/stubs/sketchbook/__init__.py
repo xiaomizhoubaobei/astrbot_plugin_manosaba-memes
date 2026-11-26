@@ -26,9 +26,11 @@ class DrawerRegion:
         self.bottom_right_y = bottom_right_y
 
     def width(self) -> int:
+        """Return the region width."""
         return self.bottom_right_x - self.top_left_x
 
     def height(self) -> int:
+        """Return the region height."""
         return self.bottom_right_y - self.top_left_y
 
 
@@ -77,12 +79,14 @@ class Drawer(_BaseDrawer):
     """链式绘制器桩。"""
 
     def draw_text(self, text: str, region: Any = None, style: Any = None) -> "Drawer":
+        """Record a text draw operation."""
         self.operations.append(("text", text))
         return self
 
     def paste_image(
         self, image: Any, region: Any = None, style: Any = None
     ) -> "Drawer":
+        """Record an image paste operation."""
         self.operations.append(("paste", image))
         return self
 
