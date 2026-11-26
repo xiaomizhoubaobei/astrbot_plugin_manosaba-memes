@@ -1,0 +1,116 @@
+name: Coverage
+
+# 触发时机：main 分支的推送与 PR。
+# 说明：本仓库代码会在 main 推送时由 CNB（.cnb.yml）同步至本 GitHub 镜像仓库，
+#       因此 CNB 侧的每次变更最终都会以 push 形式落到这里，覆盖率随之更新；
+#       pull_request 仅用于 PR 场景的覆盖率对比（Codecov 会给出 diff 覆盖）。
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+# 同一分支/PR 的旧运行自动取消，避免重复上报造成徽章抖动
+concurrency:
+  group: coverage-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  id-token: write
+  actions: read
+
+jobs:
+  coverage:
+    name: 单元测试与覆盖率 (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    # 测试矩阵：本仓库声明 Python 3.13+，逐版本覆盖以尽早暴露版本相关差异。
+    # 与 CodeQL / 依赖审计的 python-version 口径同源，升版本时一并修改。
+    # fail-fast: false —— 某一版本失败不该掩盖其它版本的结论。
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.13", "3.14", "3.15"]
+    # 令牌经 job 级 env 暴露给步骤条件表达式（secrets 不能直接写在 if 中），
+    # 从而在 token 为空时安全跳过上报步骤。
+    env:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+    steps:
+      # 安全加固：与仓库内其余全部工作流一致，内联 step-security/harden-runner。
+      # 本工作流会在 PR（不可信来源）场景运行仓库自带测试代码，属高风险面，
+      # 故必须补齐该审计 Action；egress-policy: audit 仅审计出网调用，
+      # 保持"记录不阻断"的既有策略，与其它工作流口径统一。
+      - name: 加固运行器 (审计全部出网调用)
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
+        with:
+          egress-policy: audit
+
+      - name: 检出代码
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: 安装 Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          # 插件运行依赖在 src/requirements.txt；测试工具与运行依赖的合并清单在
+          # requirements-dev.txt（由 Dependabot 跟踪 pip ecosystem，directory=/）。
+          # 不在此安装 AstrBot 宿主：tests/conftest.py 已注入最小桩，
+          # 装宿主只会引入一个与本次门禁无关的重依赖（口径见 requirements-dev.txt）。
+          pip install -r requirements-dev.txt
+
+      - name: 运行测试并统计覆盖率
+        env:
+          # 覆盖率数据文件落到临时目录，避免污染工作区
+          COVERAGE_FILE: ${{ runner.temp }}/.coverage
+        run: |
+          # 本仓库为「插件根 main.py + src/ 源码包」布局，测试统一以
+          # `from src.xxx import ...` 导入，业务逻辑全部位于 src/，故以 `src`
+          # 为覆盖率计数源（main.py 仅做注册转发，不纳入统计，否则会产生
+          # 「module-not-imported」噪声）。
+          # --source 用「包名」计数，coverage 会写出相对路径（如 src/core/config.py），
+          # 从而正确定位到 GitHub 工作区文件；若误用绝对路径 --source，SF 会退化成
+          # /home/runner/work/... 这类路径，Codecov 固定路径映射后匹配不到文件。
+          python -m coverage run --source=src -m pytest tests -q
+          python -m coverage report -m
+          python -m coverage xml -o coverage.xml
+
+      # 上报 Codecov：仅在拿到 token（仓库 Secret 或同名 CNB 密钥）时执行。
+      # 未配置 token 时跳过上报，仅留存 coverage.xml 工件，不使 CI 失败。
+      # ⚠️ 仅矩阵首版本（3.13）上报：多版本重复上报同一份源码的覆盖率没有增量信息，
+      #    只会让 Codecov 侧互相覆盖、徽章抖动；其余版本负责「跑通」这一结论。
+      - name: 上报覆盖率到 Codecov
+        id: codecov
+        if: ${{ always() && matrix.python-version == '3.13' && env.CODECOV_TOKEN != '' }}
+        continue-on-error: true
+        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+        env:
+          # 官方推荐写法：令牌走环境变量而非 with.token（v5 起弃用，本仓库
+          # 已升到 v7.1.1，仍是唯一推荐路径）；env 注入同时满足
+          # 「上传必须携带令牌」的要求：本仓库虽为公开仓库，但上传发生在
+          # 受保护分支 main 上且未关闭公开仓库令牌校验，按 Codecov 规则
+          # （见 AGENTS.md 10.8.1）依然必须带令牌，故一律显式注入。
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+        with:
+          files: ./coverage.xml
+          flags: unittests
+          name: python-3.13
+          fail_ci_if_error: false
+          verbose: true
+
+      # 上传覆盖率报告工件：upload-artifact 锁到 v7.0.1 的提交 SHA，
+      # 与 security-scan.yml / Scorecard.yml 保持一致（v7 起运行时为 node24，
+      # 新增可选的 archive 直传能力；本步骤仍走默认 zip 归档，参数量级极小）。
+      - name: 上传覆盖率报告工件
+        if: always() && matrix.python-version == '3.13'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          if-no-files-found: warn
