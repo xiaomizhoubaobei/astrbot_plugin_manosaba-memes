@@ -56,22 +56,22 @@ class Statement(StrEnum):
 @dataclass
 class Option:
     """A trial option for a character to say
-    
+
     Attributes:
         statement (Statement): The type of statement this option represents
         text (str): The text content of the option
-    
+
     Raises:
         TypeError: If statement is not a Statement instance
         ValueError: If text is empty or exceeds maximum length
     """
-    
+
     statement: Statement
     text: str
-    
+
     def __post_init__(self):
         """Validate option data after initialization
-        
+
         Raises:
             TypeError: If statement is not a Statement instance
             ValueError: If text is empty or exceeds maximum length
@@ -82,21 +82,21 @@ class Option:
                 f"statement must be a Statement instance, "
                 f"got {type(self.statement).__name__}"
             )
-        
+
         # 验证 text 不为空
         if not self.text or not self.text.strip():
             raise ValueError("text cannot be empty or whitespace only")
-        
+
         # 验证 text 长度
         text_stripped = self.text.strip()
         if len(text_stripped) > MAX_OPTION_TEXT_LENGTH:
             raise ValueError(
                 f"text length exceeds maximum limit of {MAX_OPTION_TEXT_LENGTH} characters"
             )
-        
+
         # 自动去除首尾空格
         self.text = text_stripped
-    
+
     def __repr__(self) -> str:
         """Return a string representation of the option"""
         return f"Option(statement={self.statement.name}, text={self.text[:50]}...)"

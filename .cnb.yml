@@ -76,11 +76,11 @@ main:
             - https://cnb.cool/XMZZUZHI/key/-/blob/main/Github.yml
           stages:
             - name: 同步到GitHub
-              image: tencentcom/git-sync 
+              image: tencentcom/git-sync
               settings:
                 target_url: https://github.com/xiaomizhoubaobei/astrbot_plugin_manosaba-memes.git
                 auth_type: https
-                username: ${GIT_USERNAME} 
+                username: ${GIT_USERNAME}
                 password: ${GIT_ACCESS_TOKEN}
                 branch: main
                 git_user: ${GIT_USERNAME}

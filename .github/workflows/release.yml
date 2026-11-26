@@ -102,7 +102,7 @@ jobs:
           generate_changelog_from_git() {
             local PREVIOUS_TAG=$1
             local VERSION=$2
-            
+
             # 初始化分类
             local FEAT=""
             local FIX=""
@@ -115,13 +115,13 @@ jobs:
             local CI=""
             local BUILD=""
             local OTHER=""
-            
+
             # 遍历所有 commit
             while IFS= read -r commit; do
               # 提取 commit 类型和消息
               type=$(echo "$commit" | sed -n 's/^\([a-z]*\):.*/\1/p')
               msg=$(echo "$commit" | sed 's/^[a-z]*: *//')
-              
+
               # 按类型分类
               case "$type" in
                 feat)    FEAT="${FEAT}- ${msg}\n" ;;
@@ -137,60 +137,60 @@ jobs:
                 *)       OTHER="${OTHER}- ${msg}\n" ;;
               esac
             done < <(git log ${PREVIOUS_TAG}..HEAD --pretty=format:"%s" --no-merges)
-            
+
             # 构建更新日志
             NOTES="## 📦 Release v${VERSION}\n\n"
-            
+
             # 添加各个分类
             if [ -n "$FEAT" ]; then
               NOTES="${NOTES}### ✨ 新功能\n\n${FEAT}\n"
             fi
-            
+
             if [ -n "$FIX" ]; then
               NOTES="${NOTES}### 🐛 修复\n\n${FIX}\n"
             fi
-            
+
             if [ -n "$PERF" ]; then
               NOTES="${NOTES}### ⚡ 性能优化\n\n${PERF}\n"
             fi
-            
+
             if [ -n "$REFACTOR" ]; then
               NOTES="${NOTES}### ♻️ 重构\n\n${REFACTOR}\n"
             fi
-            
+
             if [ -n "$DOCS" ]; then
               NOTES="${NOTES}### 📝 文档\n\n${DOCS}\n"
             fi
-            
+
             if [ -n "$TEST" ]; then
               NOTES="${NOTES}### ✅ 测试\n\n${TEST}\n"
             fi
-            
+
             if [ -n "$STYLE" ]; then
               NOTES="${NOTES}### 💄 样式\n\n${STYLE}\n"
             fi
-            
+
             if [ -n "$CI" ]; then
               NOTES="${NOTES}### 👷 CI\n\n${CI}\n"
             fi
-            
+
             if [ -n "$BUILD" ]; then
               NOTES="${NOTES}### 📦 构建\n\n${BUILD}\n"
             fi
-            
+
             if [ -n "$CHORE" ]; then
               NOTES="${NOTES}### 🔧 杂项\n\n${CHORE}\n"
             fi
-            
+
             if [ -n "$OTHER" ]; then
               NOTES="${NOTES}### 其他\n\n${OTHER}\n"
             fi
-            
+
             # 如果没有任何提交
             if [ "$NOTES" = "## 📦 Release v${VERSION}\n\n" ]; then
               NOTES="${NOTES}无更新内容\n"
             fi
-            
+
             echo -e "$NOTES"
           }
 
@@ -218,7 +218,7 @@ jobs:
 
           # 添加发布说明
           RELEASE_FOOTER="\n\n---\n\n### 📥 安装方法\n\n\`\`\`bash\n# 下载插件包后，将其放入 AstrBot 的 plugins 目录\n"
-          
+
           NOTES="${NOTES}${RELEASE_FOOTER}"
 
           # 保存到文件

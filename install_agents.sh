@@ -2,7 +2,6 @@
 
 # 定义颜色代码
 PINK='\033[1;35m'
-PURPLE='\033[0;35m'
 NC='\033[0m' # No Color
 
 # 安装typescript专家智能体

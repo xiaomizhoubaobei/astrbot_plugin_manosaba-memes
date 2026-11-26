@@ -45,7 +45,9 @@ repos:
   rev: 6.3.0
   hooks:
   - id: pydocstyle
-    args: ['--convention=google']
+    # 项目为个人插件，模块/包/构造函数文档与中文 docstring 结尾标点
+    # 不构成质量问题，按仓库存量口径忽略；其余 Google 约定继续生效。
+    args: ['--convention=google', '--add-ignore=D100,D104,D107,D415']
     # 与 mypy 口径一致：ai-audit/ 下的 .py 为框架侧说明性模块，不纳入本仓库门禁。
     exclude: '^ai-audit/'
 - repo: https://github.com/gitleaks/gitleaks

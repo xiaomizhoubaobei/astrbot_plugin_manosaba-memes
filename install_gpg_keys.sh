@@ -54,12 +54,12 @@ if [ -n "$USER_INFO" ]; then
     # 格式通常是 "Name <email@example.com>"
     GIT_COMMITTER_NAME=祁筱欣
     GIT_COMMITTER_EMAIL=$(echo "$USER_INFO" | grep -o '<[^>]*>' | sed 's/[<>]//g')
-    
+
     if [ -n "$GIT_COMMITTER_NAME" ] && [ -n "$GIT_COMMITTER_EMAIL" ]; then
         echo "==> 设置 Git 提交者信息: $GIT_COMMITTER_NAME <$GIT_COMMITTER_EMAIL>"
         export GIT_COMMITTER_NAME="$GIT_COMMITTER_NAME"
         export GIT_COMMITTER_EMAIL="$GIT_COMMITTER_EMAIL"
-        
+
         # 持久化到 bashrc
         grep -qxF "export GIT_COMMITTER_NAME=\"$GIT_COMMITTER_NAME\"" ~/.bashrc || echo "export GIT_COMMITTER_NAME=\"$GIT_COMMITTER_NAME\"" >>~/.bashrc
         grep -qxF "export GIT_COMMITTER_EMAIL=\"$GIT_COMMITTER_EMAIL\"" ~/.bashrc || echo "export GIT_COMMITTER_EMAIL=\"$GIT_COMMITTER_EMAIL\"" >>~/.bashrc
@@ -71,8 +71,11 @@ else
 fi
 
 # 7. 持久化 GPG_TTY
-grep -qxF 'export GPG_TTY=$(tty)' ~/.bashrc || echo 'export GPG_TTY=$(tty)' >>~/.bashrc
-export GPG_TTY=$(tty)
+# shellcheck disable=SC2016  # 字面写入 .bashrc，故意不让 $(tty) 在此展开
+bash_profile_line='export GPG_TTY=$(tty)'
+grep -qxF "$bash_profile_line" ~/.bashrc || echo "$bash_profile_line" >> ~/.bashrc
+GPG_TTY=$(tty)
+export GPG_TTY
 
 # 8. 启动 gpg-agent
 gpgconf --launch gpg-agent 2>/dev/null || true
