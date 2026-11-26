@@ -1,0 +1,6 @@
+# 开发/测试依赖：CNB 覆盖率门禁使用（Dependabot pip ecosystem, directory=/）。
+-r requirements.txt
+
+pytest>=8.0
+pytest-asyncio>=0.23
+coverage>=7.0

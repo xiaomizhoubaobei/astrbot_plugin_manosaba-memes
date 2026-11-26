@@ -69,6 +69,36 @@ $:
                   - git clone https://github.com/AstrBotDevs/AstrBot.git
 
 main:
+      # CNB 是主仓，PR 分支不镜像到 GitHub，故覆盖率门禁在 CNB 侧跑。
+      # 测试用 tests/stubs 桩掉 astrbot/sketchbook 重依赖，无需克隆宿主即可稳定出报告。
+      pull_request:
+        - docker:
+            image: docker.cnb.cool/xmzzuzhi/cnb-docker/python:0.0.1
+          runner:
+            cpus: 4
+          stages:
+            - name: 安装测试依赖
+              script:
+                    - pip install --upgrade pip
+                    - pip install -r requirements-dev.txt
+            - name: 单元测试与覆盖率
+              # 整段放一个 script 块：CNB 用 && 拼接数组项，多行内容拆开会语法错。
+              script:
+                    - |
+                      set -e
+                      python -m tests.run_coverage
+                      # testing:coverage 不支持 coverage.py 的 XML，改由 lcov 上报。
+                      coverage lcov -o lcov.info
+                      # 过滤零语句文件（如 __init__.py）的无 LF 记录，避免汇总 NaN。
+                      awk 'BEGIN { RS="end_of_record"; ORS="end_of_record\n" } /LF:/ { print }' lcov.info > lcov.filtered.info
+                      mv lcov.filtered.info lcov.info
+            - name: 上报单测覆盖率
+              type: testing:coverage
+              options:
+                    pattern: lcov.info
+                    # 报告缺失说明上游没产出，直接失败，避免「静默不上报」。
+                    breakIfNoCoverage: true
+      # push 到 main：只做镜像同步，覆盖率由上面的 PR 门禁与 GitHub Actions 负责。
       push:
         - services:
             - docker

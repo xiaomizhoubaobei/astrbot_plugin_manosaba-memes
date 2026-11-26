@@ -39,5 +39,11 @@ Thumbs.db
 *.log
 .env
 .env.local
-AstrBot/
-astrbot/
+/AstrBot/
+/astrbot/
+
+# 测试覆盖率产物
+.coverage
+coverage.xml
+lcov.info
+lcov.filtered.info

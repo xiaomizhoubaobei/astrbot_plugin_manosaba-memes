@@ -1,0 +1,12 @@
+# 仅承载工具配置：本仓库是 AstrBot 插件，不发布到 PyPI，不声明打包元数据。
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+# 覆盖率口径由 tests/run_coverage.py 显式传入 --source=<包名>，此处不重复声明。
+branch = true
+
+[tool.coverage.report]
+omit = ["tests/*", "*/tests/*"]

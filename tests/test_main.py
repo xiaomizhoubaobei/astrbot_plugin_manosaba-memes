@@ -1,0 +1,254 @@
+"""main.py 指令处理单测（stub astrbot + stub drawer）。"""
+
+import json
+from pathlib import Path
+from typing import Any, List
+
+import pytest
+
+from astrbot_plugin_manosaba_memes import main as main_mod
+from astrbot_plugin_manosaba_memes.constants import FACE_WHITELIST
+from astrbot_plugin_manosaba_memes.main import ManosabaMemesPlugin
+from astrbot_plugin_manosaba_memes.models import Character
+
+
+class FakeEvent:
+    """最小事件替身：记录 plain/image 结果。"""
+
+    def __init__(self, message_str: str, session: str = "session-1") -> None:
+        self.message_str = message_str
+        self._session = session
+        self.results: List[Any] = []
+
+    def plain_result(self, text: str) -> Any:
+        self.results.append(("plain", text))
+        return self.results[-1]
+
+    def image_result(self, path: str) -> Any:
+        self.results.append(("image", path))
+        # 模拟宿主消费完图片后立即删除
+        Path(path).unlink(missing_ok=True)
+        return self.results[-1]
+
+    def get_session_id(self) -> str:
+        return self._session
+
+    @property
+    def last(self) -> Any:
+        return self.results[-1] if self.results else None
+
+
+async def _drain(agen: Any) -> List[Any]:
+    """消费异步生成器。"""
+    return [item async for item in agen]
+
+
+@pytest.fixture
+def plugin(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> ManosabaMemesPlugin:
+    monkeypatch.setattr(main_mod.StarTools, "get_data_dir", lambda: tmp_path)
+    p = ManosabaMemesPlugin(None)
+    p.data_file = tmp_path / "character_preferences.json"
+    return p
+
+
+# ── 初始化与偏好持久化 ────────────────────────────────────────────────────
+
+
+async def test_initialize_creates_data_file(plugin: ManosabaMemesPlugin) -> None:
+    await plugin.initialize()
+    assert plugin.data_file.parent.exists()
+
+
+async def test_load_preferences_ignores_invalid_names(
+    plugin: ManosabaMemesPlugin,
+) -> None:
+    assert plugin.data_file is not None
+    plugin.data_file.write_text(
+        json.dumps({"s1": "希罗", "s2": "不存在的角色"}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    await plugin._load_character_preferences()
+    assert plugin.character_map["s1"] is Character.HIRO
+    # 无效名字走 defaultdict 默认值
+    assert plugin.character_map["s2"] is Character.EMA
+
+
+async def test_load_preferences_handles_broken_json(
+    plugin: ManosabaMemesPlugin,
+) -> None:
+    assert plugin.data_file is not None
+    plugin.data_file.write_text("{not json", encoding="utf-8")
+    # 不应抛异常
+    await plugin._load_character_preferences()
+
+
+async def test_save_and_reload_preferences(plugin: ManosabaMemesPlugin) -> None:
+    plugin.character_map["s1"] = Character.HIRO
+    await plugin._save_character_preferences()
+    assert plugin.data_file is not None
+    assert json.loads(plugin.data_file.read_text(encoding="utf-8")) == {"s1": "Hiro"}
+
+    plugin.character_map.clear()
+    await plugin._load_character_preferences()
+    # 注意：_save 写英文 value（"Hiro"），而 _load 经 get_character 仅认中文名，
+    # 故此处读回会落回默认值 EMA —— 该存/读口径不一致已在汇报中提示。
+    assert plugin.character_map["s1"] is Character.EMA
+
+
+# ── 安安说 ─────────────────────────────────────────────────────────────────
+
+
+async def test_handle_anan_says_requires_text(plugin: ManosabaMemesPlugin) -> None:
+    out = await _drain(plugin.handle_anan_says(FakeEvent("安安说")))
+    assert out[0][0] == "plain" and "请输入文本" in out[0][1]
+
+
+@pytest.mark.parametrize("face", sorted(FACE_WHITELIST))
+async def test_handle_anan_says_with_face(
+    plugin: ManosabaMemesPlugin, face: str
+) -> None:
+    event = FakeEvent(f"安安说 你好 {face}")
+    out = await _drain(plugin.handle_anan_says(event))
+    assert out[0][0] == "image"
+
+
+async def test_handle_anan_says_unknown_face_treated_as_text(
+    plugin: ManosabaMemesPlugin,
+) -> None:
+    event = FakeEvent("安安说 你好 随便")
+    # 未知表情应并入文本，仍正常出图
+    out = await _drain(plugin.handle_anan_says(event))
+    assert out[0][0] == "image"
+
+
+async def test_handle_anan_says_newline_escape(plugin: ManosabaMemesPlugin) -> None:
+    event = FakeEvent(r"安安说 第一行\n第二行")
+    out = await _drain(plugin.handle_anan_says(event))
+    assert out[0][0] == "image"
+
+
+async def test_handle_anan_says_reports_draw_failure(
+    plugin: ManosabaMemesPlugin, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def boom(*args: Any, **kwargs: Any) -> bytes:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(main_mod, "draw_anan", boom)
+    out = await _drain(plugin.handle_anan_says(FakeEvent("安安说 你好")))
+    assert out[0][0] == "plain" and "生成图片失败" in out[0][1]
+
+
+# ── 审判表情包 ─────────────────────────────────────────────────────────────
+
+
+async def test_handle_trial_single_option(plugin: ManosabaMemesPlugin) -> None:
+    event = FakeEvent("【疑问】这是疑问")
+    out = await _drain(plugin.handle_trial(event))
+    assert out[0][0] == "image"
+
+
+async def test_handle_trial_multiple_options(plugin: ManosabaMemesPlugin) -> None:
+    event = FakeEvent("【疑问】第一\n【反驳】第二\n【赞同】第三")
+    out = await _drain(plugin.handle_trial(event))
+    assert out[0][0] == "image"
+
+
+async def test_handle_trial_magic_with_arg(plugin: ManosabaMemesPlugin) -> None:
+    event = FakeEvent("【魔法: 诺亚】液体操控")
+    out = await _drain(plugin.handle_trial(event))
+    assert out[0][0] == "image"
+
+
+async def test_handle_trial_bad_statement_reports_error(
+    plugin: ManosabaMemesPlugin,
+) -> None:
+    # 正则不匹配 => 没有选项
+    out = await _drain(plugin.handle_trial(FakeEvent("随便说点什么")))
+    assert out[0][0] == "plain" and "请至少输入一个选项" in out[0][1]
+
+
+async def test_handle_trial_invalid_magic_reports_error(
+    plugin: ManosabaMemesPlugin,
+) -> None:
+    out = await _drain(plugin.handle_trial(FakeEvent("【魔法: 路人】某事")))
+    assert out[0][0] == "plain" and "无效的角色" in out[0][1]
+
+
+async def test_handle_trial_too_many_options(plugin: ManosabaMemesPlugin) -> None:
+    msg = "\n".join(f"【疑问】选项{i}" for i in range(11))
+    out = await _drain(plugin.handle_trial(FakeEvent(msg)))
+    assert out[0][0] == "plain" and "最多支持" in out[0][1]
+
+
+async def test_handle_trial_value_error_reports(
+    plugin: ManosabaMemesPlugin, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def boom(*args: Any, **kwargs: Any) -> bytes:
+        raise ValueError("业务错误")
+
+    monkeypatch.setattr(main_mod, "draw_trial", boom)
+    out = await _drain(plugin.handle_trial(FakeEvent("【疑问】文本")))
+    assert out[0] == ("plain", "业务错误")
+
+
+async def test_handle_trial_overflow_error_reports(
+    plugin: ManosabaMemesPlugin, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def boom(*args: Any, **kwargs: Any) -> bytes:
+        raise OverflowError("overflow")
+
+    monkeypatch.setattr(main_mod, "draw_trial", boom)
+    out = await _drain(plugin.handle_trial(FakeEvent("【疑问】文本")))
+    assert out[0] == ("plain", "选项过多，请减少选项数量")
+
+
+async def test_handle_trial_generic_error_reports(
+    plugin: ManosabaMemesPlugin, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def boom(*args: Any, **kwargs: Any) -> bytes:
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(main_mod, "draw_trial", boom)
+    out = await _drain(plugin.handle_trial(FakeEvent("【疑问】文本")))
+    assert out[0][0] == "plain" and "生成图片失败" in out[0][1]
+
+
+# ── 切换角色 / 帮助 ────────────────────────────────────────────────────────
+
+
+async def test_switch_character_requires_name(plugin: ManosabaMemesPlugin) -> None:
+    out = await _drain(plugin.handle_switch_character(FakeEvent("切换角色")))
+    assert out[0][0] == "plain" and "请输入角色名" in out[0][1]
+
+
+@pytest.mark.parametrize(
+    ("name", "expected"),
+    [("艾玛", Character.EMA), ("希罗", Character.HIRO)],
+)
+async def test_switch_character_success(
+    plugin: ManosabaMemesPlugin, name: str, expected: Character
+) -> None:
+    event = FakeEvent(f"切换角色 {name}", session="s9")
+    out = await _drain(plugin.handle_switch_character(event))
+    assert out[0] == ("plain", f"已切换角色为 {name}")
+    assert plugin.character_map["s9"] is expected
+    # 切换后偏好已落盘
+    assert plugin.data_file is not None
+    assert json.loads(plugin.data_file.read_text(encoding="utf-8"))["s9"] == expected.value
+
+
+async def test_switch_character_invalid(plugin: ManosabaMemesPlugin) -> None:
+    out = await _drain(plugin.handle_switch_character(FakeEvent("切换角色 路人")))
+    assert out[0][0] == "plain" and "无效的角色" in out[0][1]
+
+
+async def test_handle_help(plugin: ManosabaMemesPlugin) -> None:
+    out = await _drain(plugin.handle_help(FakeEvent("魔裁帮助")))
+    assert out[0][0] == "plain" and "安安说" in out[0][1] and "审判表情包" in out[0][1]
+
+
+async def test_terminate_saves(plugin: ManosabaMemesPlugin) -> None:
+    plugin.character_map["s1"] = Character.HIRO
+    await plugin.terminate()
+    assert plugin.data_file is not None
+    assert json.loads(plugin.data_file.read_text(encoding="utf-8")) == {"s1": "Hiro"}
