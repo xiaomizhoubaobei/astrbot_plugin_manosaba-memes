@@ -1,102 +1,203 @@
-name: Release Build
+name: 'Release 构建'
 
-# 触发条件：推送到 main 分支时触发或手动触发
+# 触发条件：推送 `v*` tag 时触发，或手动触发。
+#
+# 为什么是 tag 而不是 push main：
+#   - Release 的语义是「给某个确定的版本点打一次包」，tag 就是那个版本点本身；
+#     挂在 push main + paths 过滤上时，任何一次 .py 改动都会跑一遍发布流程，
+#     版本号没改就白跑，改了就容易和 tag 对不上。
+#   - 改成 tag 触发后，发布节奏完全由「什么时候打 tag」决定，
+#     代码合入与发版解耦，main 上的中间态不会再意外变成 Release。
+#
+# ⚠️ 打 tag 之前请先把 metadata.yaml 的 version 改好并合入 main——
+#    第 3 步会校验「tag 名 == v<metadata version>」，不一致直接失败。
+#    另：CNB 侧 `.cnb.yml` 只把 main 分支同步到 GitHub 镜像仓库、不搬 tag，
+#    故本工作流实际是在 GitHub 镜像仓库侧被 tag push 触发的。
 on:
   push:
-    branches:
-      - main
-    paths:
-      - '**/*.py'
-      - 'metadata.yaml'
-      - 'requirements.txt'
-      - 'logo.png'
-      - 'CHANGELOG.md'
-      - 'assets/**'
-      - 'previews/**'
-      - '.github/workflows/release.yml'
-  workflow_dispatch:  # 允许手动触发
+    tags:
+      - 'v*'
+  workflow_dispatch:  # 允许手动触发（手动触发时不做 tag/版本一致性校验）
 
 permissions:
   contents: read
+  id-token: write
+  actions: read
 
 jobs:
   build:
-    name: Build Release
+    name: 构建 Release
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      id-token: write  # 必需的签名权限
+      id-token: write  # 为签名所必需
+      actions: read
 
     steps:
       # 0. 安全加固
       - name: 加固运行器
-        uses: step-security/harden-runner@c6295a65d1254861815972266d5933fd6e532bdf # v2.11.1
+        uses: step-security/harden-runner@dc2769abcc0fcfbadfc1df54081c1608579ef6b2 # v2.22.2
         with:
           egress-policy: audit
 
       # 1. 检出代码
       - name: 检出代码
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0  # 获取完整的 git 历史
 
       # 2. 设置 Python 环境
+      #
+      # ⚠️ 这里是**构建侧**的 Python，必须是 3.13+（由 ci-evidence-pack 硬断言），
+      #    与插件自身运行所需版本是两套独立约束：ci-evidence-pack 内核纯标准库，
+      #    但依赖 3.11+ 的 tomllib、并要求 3.13 的解释器。写成 3.12 时该断言
+      #    直接 exit 1 → 整步失败 → 创建 Release 被跳过，现场只剩一句
+      #    「生成证据包失败」，与真正原因（解释器版本不够）隔了很远。
       - name: 设置 Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: '3.12'
+          python-version: '3.13'
 
-      # 3. 获取版本号和插件名称
+      # 3. 获取版本号和插件名称（严格白名单校验，杜绝命令注入）
       - name: 获取版本号和插件名称
         id: get_info
+        env:
+          # metadata.yaml 随 PR 提交，属不可信输入；此处只做提取，随后立即用白名单校验。
+          META_FILE: metadata.yaml
         run: |
-          # 从 metadata.yaml 文件中读取版本号
-          VERSION=$(grep "^version:" metadata.yaml | awk '{print $2}')
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "tag_name=$VERSION" >> $GITHUB_OUTPUT
-          # 从 metadata.yaml 文件中读取插件名称
-          PLUGIN_NAME=$(grep "^name:" metadata.yaml | awk '{print $2}')
-          echo "plugin_name=$PLUGIN_NAME" >> $GITHUB_OUTPUT
+          set -euo pipefail
+
+          # 从 metadata.yaml 读取版本号（仅取 key 后的第一个字段，剥离行尾注释/空白）
+          VERSION=$(grep -E "^version:[[:space:]]*" "$META_FILE" | head -n 1 | sed -E 's/^version:[[:space:]]*//; s/[[:space:]]+.*$//')
+          # 移除可能存在的 'v' 前缀以避免重复
+          VERSION=${VERSION#v}
+
+          # 从 metadata.yaml 读取插件名称（同上处理）
+          PLUGIN_NAME=$(grep -E "^name:[[:space:]]*" "$META_FILE" | head -n 1 | sed -E 's/^name:[[:space:]]*//; s/[[:space:]]+.*$//')
+
+          # ── 白名单严格校验 ──────────────────────────────────────────────
+          # 这两个值后续会用于 mkdir / zip / Release 资源名等位置；metadata.yaml
+          # 属于不可信输入，任何 shell 元字符（$ ` ; | & ( ) 空格 换行等）都
+          # 必须在源头拒绝，否则会在 contents: write 的发布作业中造成命令注入。
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+(\.[0-9]+){1,3}(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then
+            echo "::error::metadata.yaml 中的 version 非法（仅允许 SemVer，例如 1.2.3）：'${VERSION}'"
+            exit 1
+          fi
+          if ! printf '%s' "$PLUGIN_NAME" | grep -Eq '^[A-Za-z0-9._-]{1,64}$'; then
+            echo "::error::metadata.yaml 中的 name 非法（仅允许字母/数字/._-，且不超过 64 字符）：'${PLUGIN_NAME}'"
+            exit 1
+          fi
+
+          # ── tag 触发时的「tag 名 == v<版本号>」一致性校验 ─────────────────
+          # 本工作流由 tag push 触发，但发布用的 tag 名是从 metadata.yaml 推导的
+          # （第 10 步 action-gh-release 的 tag_name）。两者不一致时，Release 会被
+          # 建到另一个 tag 上，tag 与产物错位且不报错，故在此处提前拦下。
+          # 手动触发（workflow_dispatch）不受此约束：它本就是「按当前 metadata 发布」。
+          if [ "${GITHUB_REF_TYPE:-}" = "tag" ] && [ "${GITHUB_REF_NAME:-}" != "v${VERSION}" ]; then
+            echo "::error::tag 名与 metadata.yaml 版本不一致：tag='${GITHUB_REF_NAME}'，metadata version='${VERSION}'（应为 'v${VERSION}'）；请先修正 metadata.yaml 后再打 tag"
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag_name=v$VERSION" >> "$GITHUB_OUTPUT"
+          echo "plugin_name=$PLUGIN_NAME" >> "$GITHUB_OUTPUT"
 
       # 4. 安装依赖
       - name: 安装依赖
         run: |
           pip install -r requirements.txt
 
-      # 5. 创建插件目录
+      # 5. 创建插件目录（plugin_name 经 env 传入，禁止直接内插进 run）
       - name: 创建插件目录
+        env:
+          PLUGIN_NAME: ${{ steps.get_info.outputs.plugin_name }}
         run: |
-          PLUGIN_NAME=${{ steps.get_info.outputs.plugin_name }}
           mkdir -p "$PLUGIN_NAME"
 
-      # 6. 复制插件文件到构建目录
+      # 6. 复制插件文件到构建目录（plugin_name 经 env 传入，禁止直接内插进 run）
+      #
+      # ⚠️ 这里的 cp 白名单即**发布包内容的唯一来源**（第 7.1 步会逐条断言）。
+      #    一律不加 `|| true`：少拷一个必需文件必须当场失败，而不是产出一个
+      #    「缺文件却发布成功」的包，让使用者装上才发现 import 报错。
       - name: 复制插件文件
+        env:
+          PLUGIN_NAME: ${{ steps.get_info.outputs.plugin_name }}
         run: |
-          PLUGIN_NAME=${{ steps.get_info.outputs.plugin_name }}
-          # 复制主程序文件
-          cp main.py "$PLUGIN_NAME"/
-          # 复制配置文件和依赖文件
-          cp metadata.yaml requirements.txt "$PLUGIN_NAME"/ || true
-          # 复制所有处理器文件
-          cp *_handler.py command_utils.py "$PLUGIN_NAME"/ || true
-          # 复制 logo 文件
-          cp logo.png "$PLUGIN_NAME"/ || true
-          # 复制子目录
-          cp -r baidu "$PLUGIN_NAME"/ || true
+          # 插件必需文件（缺失即失败）
+          cp main.py __init__.py constants.py drawer.py models.py utils.py \
+            metadata.yaml requirements.txt "$PLUGIN_NAME/"
+          # 图片素材（drawer.py 运行时按 assets/ 相对路径读取，属必需）
+          cp -r assets "$PLUGIN_NAME/"
+          # 插件图标（可选，缺失不影响运行）
+          cp logo.png "$PLUGIN_NAME/" || true
 
-      # 7. 打包为 zip 文件
+      # 7. 打包为 zip 文件（plugin_name 经 env 传入，禁止直接内插进 run）
       - name: 创建 zip 包
+        env:
+          PLUGIN_NAME: ${{ steps.get_info.outputs.plugin_name }}
         run: |
-          PLUGIN_NAME=${{ steps.get_info.outputs.plugin_name }}
-          zip -r "$PLUGIN_NAME".zip "$PLUGIN_NAME"/
+          # `-FS`：刷新模式，同名 zip 已存在时按内容同步增删，避免残留旧条目。
+          zip -r -FS "${PLUGIN_NAME}.zip" "$PLUGIN_NAME/" -x '*__pycache__*' '*.pyc'
+          echo "== 发布包内容 =="
+          unzip -l "${PLUGIN_NAME}.zip"
+
+      # 7.1 校验发布包边界：只允许白名单条目，必需文件不得缺失
+      - name: 校验发布包边界
+        env:
+          PLUGIN_NAME: ${{ steps.get_info.outputs.plugin_name }}
+        run: |
+          set -uo pipefail
+          ARTIFACT="${PLUGIN_NAME}.zip"
+          # awk 取第 4 列文件名；去掉目录行与表头 / 分隔行，再滤掉空行，
+          # 否则首尾空行会让逐行断言失去意义
+          LIST=$(unzip -l "$ARTIFACT" | awk '{print $4}' | grep -v '/$' \
+            | grep -vE '^(Name|-+)?$' || true)
+
+          # 1) 必需文件必须在包内
+          for required in main.py __init__.py constants.py drawer.py models.py utils.py \
+                          metadata.yaml requirements.txt; do
+            echo "$LIST" | grep -qx "${PLUGIN_NAME}/$required" \
+              || { echo "::error::发布包缺少必需文件: $required"; exit 1; }
+          done
+
+          # 2) assets/ 素材必须在包内（drawer.py 运行时依赖）
+          echo "$LIST" | grep -q "^${PLUGIN_NAME}/assets/" \
+            || { echo "::error::发布包缺少 assets/ 图片素材"; exit 1; }
+
+          # 3) 包内只能出现白名单条目：开发 / CI 资产（install_gpg_keys.sh、
+          #    .github/、docs/、previews/ 等）一旦混进包，会被铺到使用者的
+          #    插件目录里，其中拉取私钥、改写全局 git 配置的脚本若被误执行，
+          #    风险由使用者承担。
+          while IFS= read -r entry; do
+            case "$entry" in
+              "${PLUGIN_NAME}/main.py"|"${PLUGIN_NAME}/__init__.py"| \
+              "${PLUGIN_NAME}/constants.py"|"${PLUGIN_NAME}/drawer.py"| \
+              "${PLUGIN_NAME}/models.py"|"${PLUGIN_NAME}/utils.py"| \
+              "${PLUGIN_NAME}/metadata.yaml"|"${PLUGIN_NAME}/requirements.txt"| \
+              "${PLUGIN_NAME}/logo.png")
+                continue
+                ;;
+              "${PLUGIN_NAME}/assets/"*)
+                continue
+                ;;
+            esac
+            echo "::error::发布包内混入了白名单之外的条目: ${entry}"
+            exit 1
+          done <<< "$LIST"
+
+          echo "发布包边界校验通过"
 
       # 8. 生成 Release Notes
-      - name: Generate Release Notes
+      - name: 生成 Release Notes
         id: release_notes
+        env:
+          # version 经 env 传入，禁止直接内插进 run 脚本
+          VERSION: ${{ steps.get_info.outputs.version }}
         run: |
-          # 从上一个标签生成 Release Notes
+          # 从上一个标签生成发布说明。
+          # 取 HEAD^ 而非 HEAD：本工作流由 tag push 触发，HEAD 正是本次要发布的
+          # 那个 tag，从它往前找才是「上一个版本」。
           PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-          VERSION=${{ steps.get_info.outputs.version }}
 
           # 定义生成更新日志的函数
           generate_changelog_from_git() {
@@ -195,14 +296,20 @@ jobs:
           }
 
           if [ -z "$PREVIOUS_TAG" ]; then
-            # 首次发布
-            NOTES="## 🎉 首次发布 v${VERSION}\n\n这是魔裁 Memes 插件的首次正式发布。\n\n### 功能特性\n\n- 生成「魔法少女的魔法审判」的表情包\n\n### 使用方法\n\n请参考项目 README.md 了解详细使用方法。"
+            # 首次 Release
+            NOTES="## 🎉 首次 Release v${VERSION}\n\n这是魔裁 Memes 插件的首次正式 Release。\n\n### 功能特性\n\n- 安安说：生成安安举牌表情包\n- 审判表情包：生成审判选项图片\n- 切换角色：记住用户选择的审判角色\n\n### 使用方法\n\n请参考项目 README.md 了解详细使用方法。"
           else
             # 检查是否存在 CHANGELOG.md
             if [ -f "CHANGELOG.md" ]; then
-              # 从 CHANGELOG.md 提取当前版本的更新内容
-              # 用字符串匹配精确定位版本标题，遇到下一个版本标题先退出再打印，避免混入其他版本内容
-              CHANGELOG_CONTENT=$(awk -v ver="${VERSION}" 'index($0, "## [" ver "]") > 0 {found=1; next} found && /^## / {exit} found {print}' CHANGELOG.md)
+              # 从 CHANGELOG.md 提取当前版本的更新内容。
+              # 本仓库标题形如 "## [v0.0.4]"（带 v 前缀），用 index() 做字面前缀匹配；
+              # 先跳过标题行、遇到下一个 "## " 再退出，避免把旧版本段落带进 Notes。
+              CHANGELOG_CONTENT=$(awk -v version="[v${VERSION}]" '
+                index($0, "## " version) == 1 { found=1; next }
+                found && /^## / { exit }
+                found && NF { started=1 }
+                started { print }
+              ' CHANGELOG.md)
 
               if [ -n "$CHANGELOG_CONTENT" ]; then
                 NOTES="## 📦 Release v${VERSION}\n\n${CHANGELOG_CONTENT}"
@@ -216,8 +323,9 @@ jobs:
             fi
           fi
 
-          # 添加发布说明
-          RELEASE_FOOTER="\n\n---\n\n### 📥 安装方法\n\n\`\`\`bash\n# 下载插件包后，将其放入 AstrBot 的 plugins 目录\n"
+          # 添加 Release Notes
+          # 代码块必须闭合，否则后续「证据包说明」会被整体吞进 bash 代码块。
+          RELEASE_FOOTER="\n\n---\n\n### 📥 安装方法\n\n\`\`\`bash\n# 下载插件包后，将其放入 AstrBot 的 plugins 目录\n# 然后重启 AstrBot 服务\n\`\`\`\n"
 
           NOTES="${NOTES}${RELEASE_FOOTER}"
 
@@ -229,23 +337,40 @@ jobs:
             echo 'notes<<EOF'
             cat release_notes.md
             echo EOF
-          } >> $GITHUB_OUTPUT
+          } >> "$GITHUB_OUTPUT"
 
-      # 9. 生成证据包（无密钥签名）
+      # 9. 生成证据包（ci-evidence-pack）
+      #
+      # 引用方式：钉到 commit SHA 而不是 @main。浮动引用会让「本次跑的到底是哪一版」
+      # 永远说不清，出了事故也无法回放；@main 还会让上游任何一次提交直接进入本作业
+      # （本作业持有 contents: write + id-token: write）。
+      #
+      # 契约要点（改之前先读上游 action.yml）：
+      #   1) include 必填，留空会让打包脚本直接失败，而不是产出一个空包；
+      #   2) 输出目录 ≠ 上传目录：签名产物路径只能从 steps.evidence.outputs.* 取，
+      #      手拼文件名会在上游改名时静默缺件；
+      #   3) 签名产物是 cosign v3 的 .sigstore.json 单文件，.sig + .crt 双文件形态已废弃。
       - name: 生成证据包
-        if: always()  # 即使构建失败也运行
-        uses: OrygnsCode/ci-evidence-pack@8222d7b3b015ce2f72222215bdf9966773036ab1 # main
+        id: evidence
+        uses: xiaomizhoubaobei/ci-evidence-pack@53216365066a9fe64de178ab0184539ad253e355 # v0.0.2
         with:
-          upload-name: evidence-bundle
-          sign: 'true'
+          # 收集范围：插件 zip 产物 + 发布正文 + 构建输入清单。
           include: |
-            *.zip
+            ${{ steps.get_info.outputs.plugin_name }}.zip
             release_notes.md
-          retention-days: 30
+            metadata.yaml
+            requirements.txt
+          out-dir: _evidence_dist
+          sbom: auto
+          # 包外锚点：sha256 登记到包外台账，随 Release 一起分发供下游核对。
+          anchor-file: _anchor/anchor.txt
+          expect-repo: ${{ github.repository }}
+          # 自检不通过即红：发出一份自己都不信的包，比不发更糟。
+          fail-on-invalid: true
 
       # 10. 创建 GitHub Release
-      - name: Create Release
-        uses: softprops/action-gh-release@a06a81a03ee405af7f2048a818ed3f03bbf83c7b # v2.5.0
+      - name: 创建 GitHub Release
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
           tag_name: ${{ steps.get_info.outputs.tag_name }}
           name: Release ${{ steps.get_info.outputs.version }}
@@ -258,22 +383,30 @@ jobs:
 
             本 Release 包含以下文件：
 
-            - **${{ steps.get_info.outputs.plugin_name }}-*.zip**: 插件安装包
-            - **evidence-bundle.tar.gz**: CI 证据包（包含源代码、Git 元数据、依赖项、SBOM 等）
-            - **evidence-bundle.tar.gz.sig**: 证据包的 Sigstore 签名
-            - **evidence-bundle.tar.gz.crt**: 证据包的签名证书
+            - **${{ steps.get_info.outputs.plugin_name }}.zip**: 插件安装包
+            - **evidence-\*.tar.gz**: CI 证据包（确定性打包 + 严格 manifest + SBOM）
+            - **evidence-\*.tar.gz.sigstore.json**: cosign v3 签名 bundle（keyless，OIDC 短期证书）
+            - **anchor.txt**: 证据包的包外 sha256 台账
 
-            证据包用于合规性审计和构建验证，可以使用以下命令验证：
+            证据包 sha256：`${{ steps.evidence.outputs.bundle-sha256 }}`
+
+            验签时请用 `--certificate-identity` 做**全等**匹配，核对身份为
+            `https://github.com/${{ github.repository }}/.github/workflows/release.yml@${{ github.ref }}`
+            （tag 触发时 `${{ github.ref }}` 即 `refs/tags/<本次 tag>`）：
 
             ```bash
-            ci-evidence-pack verify evidence-bundle.tar.gz
+            cosign verify-blob \
+              --bundle evidence-*.tar.gz.sigstore.json \
+              --certificate-identity 'https://github.com/${{ github.repository }}/.github/workflows/release.yml@${{ github.ref }}' \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+              evidence-*.tar.gz
             ```
           draft: false
           prerelease: false
           files: |
             ${{ steps.get_info.outputs.plugin_name }}.zip
-            _evidence_dist/*.tar.gz
-            _evidence_dist/*.sig
-            _evidence_dist/*.crt
+            ${{ steps.evidence.outputs.bundle-path }}
+            ${{ steps.evidence.outputs.signature-bundle }}
+            ${{ steps.evidence.outputs.anchor-file }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
