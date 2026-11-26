@@ -32,7 +32,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.13", "3.14", "3.15"]
+        python-version: ["3.13", "3.14"]
     # 令牌经 job 级 env 暴露给步骤条件表达式（secrets 不能直接写在 if 中），
     # 从而在 token 为空时安全跳过上报步骤。
     env:
