@@ -4,8 +4,9 @@
 这里注册一个 meta path finder，把仓库根以固定包名暴露给 import 系统，
 使测试导入与 ``coverage --source`` 都不依赖检出目录名。
 
-同时把 ``tests/stubs`` 放到 sys.path 最前，让 astrbot / sketchbook 这类
-重依赖由最小桩替代，覆盖率门禁无需克隆宿主或编译绘图库即可稳定跑通。
+注意：不要在这里注入 ``tests/stubs``。新测试需要真实的 sketchbook 与
+Pillow 渲染（用 PIL 打开产出的 PNG 校验），假桩会产出不可解析的假 PNG；
+AstrBot 宿主的桩由 ``tests/conftest.py`` 负责注册。
 """
 
 from __future__ import annotations
@@ -20,7 +21,6 @@ from typing import Optional, Sequence
 
 PACKAGE_NAME = "astrbot_plugin_manosaba_memes"
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
-STUBS_DIR = pathlib.Path(__file__).resolve().parent / "stubs"
 
 
 class _PackageAliasFinder(importlib.abc.MetaPathFinder):
@@ -46,10 +46,7 @@ class _PackageAliasFinder(importlib.abc.MetaPathFinder):
 
 
 def install() -> str:
-    """注册桩路径 + 包视图（幂等），返回策略名。"""
-    stubs = str(STUBS_DIR)
-    if stubs not in sys.path:
-        sys.path.insert(0, stubs)
+    """注册包视图（幂等），返回策略名。"""
     if PACKAGE_NAME in sys.modules:
         return "existing"
     # 已经注册过就不重复插入
@@ -63,4 +60,4 @@ def install() -> str:
 PACKAGE_VIEW_MODE: str = install()
 
 # 便于测试读取
-__all__ = ["PACKAGE_NAME", "REPO_ROOT", "STUBS_DIR", "PACKAGE_VIEW_MODE", "install"]
+__all__ = ["PACKAGE_NAME", "REPO_ROOT", "PACKAGE_VIEW_MODE", "install"]
