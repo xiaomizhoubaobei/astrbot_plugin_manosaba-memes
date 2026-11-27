@@ -1,14 +1,23 @@
 """Build a complete AstrBot upload archive without installing anything."""
+
 import argparse
 import hashlib
 import json
 import keyword
-from pathlib import Path
 import re
 import zipfile
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-MODULES = ("__init__.py", "main.py", "drawer.py", "models.py", "utils.py", "constants.py", "emoji_renderer.py")
+MODULES = (
+    "__init__.py",
+    "main.py",
+    "drawer.py",
+    "models.py",
+    "utils.py",
+    "constants.py",
+    "emoji_renderer.py",
+)
 
 
 def build(output: Path | None = None) -> Path:
@@ -19,14 +28,39 @@ def build(output: Path | None = None) -> Path:
     name = match[1]
     if not name.isidentifier() or keyword.iskeyword(name):
         raise ValueError("metadata name 必须为合法 Python 模块名")
-    required = [ROOT / entry for entry in (*MODULES, "metadata.yaml", "requirements.txt", "LICENSE", "README.md", "CHANGELOG.md", "build_release.py", "logo.png")]
-    required += [ROOT / "assets" / entry for entry in (
-        "anan/base.png", "anan/base_overlay.png", "trial/black.png",
-        "trial/background.png", "trial/ema.png", "trial/hiro.png", "trial/option.png",
-        "fonts/SourceHanSansSC-Bold.otf", "fonts/SourceHanSerifSC.otf",
-        "noto_emoji/index.json", "noto_emoji/manifest.json", "noto_emoji/NOTICE.txt",
-        "noto_emoji/LICENSE-IMAGES.txt", "noto_emoji/LICENSE-APACHE-2.0.txt", "noto_emoji/LICENSE-FLAGS.txt",
-    )]
+    required = [
+        ROOT / entry
+        for entry in (
+            *MODULES,
+            "metadata.yaml",
+            "requirements.txt",
+            "LICENSE",
+            "README.md",
+            "CHANGELOG.md",
+            "build_release.py",
+            "logo.png",
+        )
+    ]
+    required += [
+        ROOT / "assets" / entry
+        for entry in (
+            "anan/base.png",
+            "anan/base_overlay.png",
+            "trial/black.png",
+            "trial/background.png",
+            "trial/ema.png",
+            "trial/hiro.png",
+            "trial/option.png",
+            "fonts/SourceHanSansSC-Bold.otf",
+            "fonts/SourceHanSerifSC.otf",
+            "noto_emoji/index.json",
+            "noto_emoji/manifest.json",
+            "noto_emoji/NOTICE.txt",
+            "noto_emoji/LICENSE-IMAGES.txt",
+            "noto_emoji/LICENSE-APACHE-2.0.txt",
+            "noto_emoji/LICENSE-FLAGS.txt",
+        )
+    ]
     for path in required:
         if not path.is_file():
             raise FileNotFoundError(f"打包缺少必需文件: {path.relative_to(ROOT)}")

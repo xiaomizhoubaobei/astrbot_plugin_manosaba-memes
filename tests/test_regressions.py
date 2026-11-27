@@ -1,21 +1,24 @@
 import asyncio
 import base64
-from io import BytesIO
 import json
 import keyword
-from pathlib import Path
 import zipfile
+from io import BytesIO
+from pathlib import Path
 
-from PIL import Image
 import pytest
 import yaml
-
 from astrbot_plugin_manosaba_memes import main
 from astrbot_plugin_manosaba_memes.build_release import build
-from astrbot_plugin_manosaba_memes.constants import FACE_WHITELIST, BRACKET_COLOR
-from astrbot_plugin_manosaba_memes.drawer import draw_anan, draw_trial, get_option_coordinates
+from astrbot_plugin_manosaba_memes.constants import BRACKET_COLOR, FACE_WHITELIST
+from astrbot_plugin_manosaba_memes.drawer import (
+    draw_anan,
+    draw_trial,
+    get_option_coordinates,
+)
 from astrbot_plugin_manosaba_memes.models import Character, Option, Statement
-from astrbot_plugin_manosaba_memes.utils import parse_anan, parse_trial, TRIAL_TRIGGER
+from astrbot_plugin_manosaba_memes.utils import TRIAL_TRIGGER, parse_anan, parse_trial
+from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -65,6 +68,7 @@ def test_release_contains_every_runtime_file(tmp_path):
 
 def test_long_trial_text_clear_of_icon():
     from astrbot_plugin_manosaba_memes import constants as c
+
     assert c.TEXT_OFFSET_X > c.STATEMENT_OFFSET_X + c.STATEMENT_ICON_WIDTH
     assert c.TEXT_OFFSET_X + c.TEXT_WIDTH < c.OPTION_WIDTH
 
@@ -86,11 +90,19 @@ def test_trial_input():
     assert not TRIAL_TRIGGER.search("聊天里引用【疑问】测试")
 
 
-@pytest.mark.parametrize("text", [
-    "【疑问】", "【疑问】   ", "【魔法】文本", "【魔法:未知】文本",
-    "【疑问:艾玛】文本", "【疑问】正确\n错误的一行",
-    "【疑问】" + "字" * 201, "\n".join(["【疑问】测试"] * 11),
-])
+@pytest.mark.parametrize(
+    "text",
+    [
+        "【疑问】",
+        "【疑问】   ",
+        "【魔法】文本",
+        "【魔法:未知】文本",
+        "【疑问:艾玛】文本",
+        "【疑问】正确\n错误的一行",
+        "【疑问】" + "字" * 201,
+        "\n".join(["【疑问】测试"] * 11),
+    ],
+)
 def test_trial_invalid_not_silently_dropped(text):
     with pytest.raises(ValueError):
         parse_trial(text)
@@ -130,7 +142,9 @@ def test_preference_restart_and_isolation(tmp_path):
     async def scenario():
         plugin = main.ManosabaMemesPlugin(None)
         plugin.data_file = tmp_path / "preferences.json"
-        plugin.data_file.write_text(json.dumps({"legacy": "Hiro", "bad": 17}), encoding="utf-8")
+        plugin.data_file.write_text(
+            json.dumps({"legacy": "Hiro", "bad": 17}), encoding="utf-8"
+        )
         await plugin._load_character_preferences()
         assert plugin._character_for(Event(session="legacy")) == Character.HIRO
         reply = await collect(plugin.handle_switch_character(Event("切换角色 希罗")))
@@ -142,6 +156,7 @@ def test_preference_restart_and_isolation(tmp_path):
         assert reloaded._character_for(Event(user="two")) == Character.EMA
         assert reloaded._character_for(Event(platform="other")) == Character.EMA
         assert reloaded._character_for(Event(session="other")) == Character.EMA
+
     asyncio.run(scenario())
 
 
@@ -150,14 +165,17 @@ def test_save_failure_keeps_file_and_memory(tmp_path, monkeypatch):
         plugin = main.ManosabaMemesPlugin(None)
         plugin.data_file = tmp_path / "prefs.json"
         plugin.data_file.write_text("{}", encoding="utf-8")
+
         def fail(*args, **kwargs):
             raise OSError("simulated disk failure")
+
         monkeypatch.setattr(Path, "replace", fail)
         reply = await collect(plugin.handle_switch_character(Event("切换角色 希罗")))
         assert "失败" in reply[0]
         assert plugin._character_for(Event()) == Character.EMA
         assert plugin.data_file.read_text() == "{}"
         assert not list(tmp_path.glob("*.tmp"))
+
     asyncio.run(scenario())
 
 
@@ -165,10 +183,12 @@ def test_save_failure_keeps_file_and_memory(tmp_path, monkeypatch):
 def test_handler_pagination_and_result_lifetime(count, monkeypatch):
     async def scenario():
         seen = []
+
         def render(character, options):
             seen.extend(option.text for option in options)
             assert 1 <= len(options) <= 3
             return b"PNG-test-payload"
+
         monkeypatch.setattr(main, "draw_trial", render)
         plugin = main.ManosabaMemesPlugin(None)
         text = "\n".join(f"【疑问】第 {i} 项" for i in range(count))
@@ -177,7 +197,11 @@ def test_handler_pagination_and_result_lifetime(count, monkeypatch):
         assert len(results) == 1
         assert len(results[0]) == (count + 2) // 3
         for component in results[0]:
-            assert base64.b64decode(component.file.removeprefix("base64://")) == b"PNG-test-payload"
+            assert (
+                base64.b64decode(component.file.removeprefix("base64://"))
+                == b"PNG-test-payload"
+            )
+
     asyncio.run(scenario())
 
 
@@ -185,8 +209,10 @@ def test_invalid_input_does_not_render(monkeypatch):
     async def scenario():
         def fail(*args):
             pytest.fail("invalid request reached renderer")
+
         monkeypatch.setattr(main, "draw_trial", fail)
         plugin = main.ManosabaMemesPlugin(None)
         result = await collect(plugin.handle_trial(Event("【疑问】正确\n错误")))
         assert "第 2 行格式错误" in result[0]
+
     asyncio.run(scenario())

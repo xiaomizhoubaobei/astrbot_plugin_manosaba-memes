@@ -1,11 +1,12 @@
 """Unit-test seams for AstrBot; no server, adapters, or plugin install involved."""
+
 import base64
 import importlib.util
 import logging
-from pathlib import Path
 import sys
 import tempfile
 import types
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 NAME = "astrbot_plugin_manosaba_memes"
@@ -39,6 +40,7 @@ class Filters:
         def wrap(fn):
             fn.trigger = pattern
             return fn
+
         return wrap
 
 
@@ -46,7 +48,13 @@ for name, attrs in {
     "astrbot": {},
     "astrbot.api": {"logger": logging.getLogger("test")},
     "astrbot.api.event": {"filter": Filters, "AstrMessageEvent": object},
-    "astrbot.api.star": {"Context": object, "Star": Star, "StarTools": types.SimpleNamespace(get_data_dir=lambda name: Path(tempfile.gettempdir()) / name)},
+    "astrbot.api.star": {
+        "Context": object,
+        "Star": Star,
+        "StarTools": types.SimpleNamespace(
+            get_data_dir=lambda name: Path(tempfile.gettempdir()) / name
+        ),
+    },
     "astrbot.api.message_components": {"Image": Image},
 }.items():
     module = types.ModuleType(name)

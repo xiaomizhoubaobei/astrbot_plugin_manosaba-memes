@@ -1,17 +1,14 @@
-from pathlib import Path
 from io import BytesIO
+from pathlib import Path
 from typing import List, Optional, Tuple
 
 from PIL import Image
-
 from sketchbook import Drawer  # type: ignore
 from sketchbook import DrawerRegion  # type: ignore
 from sketchbook import PasteStyle  # type: ignore
 from sketchbook import TextFitDrawer  # type: ignore
 from sketchbook import TextStyle  # type: ignore
 
-from .models import Character, Option, Statement
-from .emoji_renderer import has_emoji, render_mixed
 from .constants import (
     ANAN_REGION_HEIGHT,
     ANAN_REGION_WIDTH,
@@ -19,6 +16,7 @@ from .constants import (
     ANAN_REGION_Y,
     BRACKET_COLOR,
     FACE_WHITELIST,
+    MAX_ANAN_TEXT_LENGTH,
     MAX_FONT_HEIGHT,
     MAX_OPTIONS_COUNT,
     OPTION_END_Y,
@@ -27,7 +25,6 @@ from .constants import (
     OPTION_START_Y,
     OPTION_WIDTH,
     OPTIONS_PER_PAGE,
-    MAX_ANAN_TEXT_LENGTH,
     STATEMENT_ICON_HEIGHT,
     STATEMENT_ICON_WIDTH,
     STATEMENT_OFFSET_X,
@@ -40,6 +37,7 @@ from .constants import (
     TRIAL_IMAGE_HEIGHT,
     TRIAL_IMAGE_WIDTH,
 )
+from .emoji_renderer import has_emoji, render_mixed
 from .models import Character, Option, Statement
 
 PLUGIN_PATH = Path(__file__).parent
@@ -92,8 +90,11 @@ def draw_anan(text: str, face: Optional[str] = None) -> bytes:
         with Image.open(get_anan_base_image(face)) as source:
             canvas = source.convert("RGBA")
         lettering = render_mixed(
-            text, str(PLUGIN_PATH / "assets/fonts/SourceHanSansSC-Bold.otf"),
-            ANAN_REGION_WIDTH, ANAN_REGION_HEIGHT, max_font_size=60,
+            text,
+            str(PLUGIN_PATH / "assets/fonts/SourceHanSansSC-Bold.otf"),
+            ANAN_REGION_WIDTH,
+            ANAN_REGION_HEIGHT,
+            max_font_size=60,
         )
         canvas.alpha_composite(lettering, (ANAN_REGION_X, ANAN_REGION_Y))
         with Image.open(PLUGIN_PATH / "assets/anan/base_overlay.png") as overlay:
@@ -172,8 +173,9 @@ def get_option_coordinates(number: int) -> List[Tuple[int, int]]:
     total_height = number * OPTION_HEIGHT + (number - 1) * spacing
     center_y = (OPTION_START_Y + OPTION_END_Y) // 2
     start_y = center_y - total_height // 2
-    return [(OPTION_START_X, start_y + i * (OPTION_HEIGHT + spacing))
-            for i in range(number)]
+    return [
+        (OPTION_START_X, start_y + i * (OPTION_HEIGHT + spacing)) for i in range(number)
+    ]
 
 
 def draw_trial(character: Character, options: List[Option]) -> bytes:
@@ -223,10 +225,10 @@ def draw_trial(character: Character, options: List[Option]) -> bytes:
     emoji_regions = []
     for option, (x, y) in zip(options, coordinates):
         drawer = drawer.paste_image(
-                str(PLUGIN_PATH / "assets/trial/option.png"),
-                region=DrawerRegion(x, y, x + OPTION_WIDTH, y + OPTION_HEIGHT),
-                style=PasteStyle(keep_alpha=False),
-            )
+            str(PLUGIN_PATH / "assets/trial/option.png"),
+            region=DrawerRegion(x, y, x + OPTION_WIDTH, y + OPTION_HEIGHT),
+            style=PasteStyle(keep_alpha=False),
+        )
         if has_emoji(option.text):
             emoji_regions.append((option.text, x + TEXT_OFFSET_X, y + TEXT_OFFSET_Y))
         else:
@@ -245,15 +247,15 @@ def draw_trial(character: Character, options: List[Option]) -> bytes:
                 ),
             )
         drawer = drawer.paste_image(
-                get_statement_image(option.statement),
-                region=DrawerRegion(
-                    x + STATEMENT_OFFSET_X,
-                    y + STATEMENT_OFFSET_Y,
-                    x + STATEMENT_OFFSET_X + STATEMENT_ICON_WIDTH,
-                    y + STATEMENT_OFFSET_Y + STATEMENT_ICON_HEIGHT,
-                ),
-                style=PasteStyle(keep_alpha=False),
-            )
+            get_statement_image(option.statement),
+            region=DrawerRegion(
+                x + STATEMENT_OFFSET_X,
+                y + STATEMENT_OFFSET_Y,
+                x + STATEMENT_OFFSET_X + STATEMENT_ICON_WIDTH,
+                y + STATEMENT_OFFSET_Y + STATEMENT_ICON_HEIGHT,
+            ),
+            style=PasteStyle(keep_alpha=False),
+        )
     result = drawer.finish()
     if not emoji_regions:
         return result
@@ -261,9 +263,13 @@ def draw_trial(character: Character, options: List[Option]) -> bytes:
         canvas = source.convert("RGBA")
     for text, x, y in emoji_regions:
         lettering = render_mixed(
-            text, str(PLUGIN_PATH / "assets/fonts/SourceHanSerifSC.otf"),
-            TEXT_WIDTH, TEXT_HEIGHT, color=TEXT_COLOR,
-            bracket_color=BRACKET_COLOR, max_font_size=MAX_FONT_HEIGHT,
+            text,
+            str(PLUGIN_PATH / "assets/fonts/SourceHanSerifSC.otf"),
+            TEXT_WIDTH,
+            TEXT_HEIGHT,
+            color=TEXT_COLOR,
+            bracket_color=BRACKET_COLOR,
+            max_font_size=MAX_FONT_HEIGHT,
         )
         canvas.alpha_composite(lettering, (x, y))
     output = BytesIO()

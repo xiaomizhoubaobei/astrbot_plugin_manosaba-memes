@@ -3,13 +3,13 @@
 不复制上游 4000+ emoji 素材：用最小夹具替换模块级 ROOT，
 让构建逻辑本身进入覆盖率门禁，同时保持测试轻量。
 """
+
 import hashlib
 import json
-from pathlib import Path
 import zipfile
+from pathlib import Path
 
 import pytest
-
 from astrbot_plugin_manosaba_memes import build_release
 
 NAME = "astrbot_plugin_manosaba_memes"
@@ -17,15 +17,28 @@ NAME = "astrbot_plugin_manosaba_memes"
 # build() 前置校验要求存在的全部相对路径
 REQUIRED = (
     *build_release.MODULES,
-    "metadata.yaml", "requirements.txt", "LICENSE", "README.md", "CHANGELOG.md",
-    "build_release.py", "logo.png",
-    "assets/anan/base.png", "assets/anan/base_overlay.png",
-    "assets/trial/black.png", "assets/trial/background.png", "assets/trial/ema.png",
-    "assets/trial/hiro.png", "assets/trial/option.png",
-    "assets/fonts/SourceHanSansSC-Bold.otf", "assets/fonts/SourceHanSerifSC.otf",
-    "assets/noto_emoji/index.json", "assets/noto_emoji/manifest.json",
-    "assets/noto_emoji/NOTICE.txt", "assets/noto_emoji/LICENSE-IMAGES.txt",
-    "assets/noto_emoji/LICENSE-APACHE-2.0.txt", "assets/noto_emoji/LICENSE-FLAGS.txt",
+    "metadata.yaml",
+    "requirements.txt",
+    "LICENSE",
+    "README.md",
+    "CHANGELOG.md",
+    "build_release.py",
+    "logo.png",
+    "assets/anan/base.png",
+    "assets/anan/base_overlay.png",
+    "assets/trial/black.png",
+    "assets/trial/background.png",
+    "assets/trial/ema.png",
+    "assets/trial/hiro.png",
+    "assets/trial/option.png",
+    "assets/fonts/SourceHanSansSC-Bold.otf",
+    "assets/fonts/SourceHanSerifSC.otf",
+    "assets/noto_emoji/index.json",
+    "assets/noto_emoji/manifest.json",
+    "assets/noto_emoji/NOTICE.txt",
+    "assets/noto_emoji/LICENSE-IMAGES.txt",
+    "assets/noto_emoji/LICENSE-APACHE-2.0.txt",
+    "assets/noto_emoji/LICENSE-FLAGS.txt",
 )
 EMOJI_FILE = "emoji_u0023.png"
 EMOJI_BYTES = b"fake-png-payload"
@@ -38,7 +51,9 @@ def project(tmp_path, monkeypatch):
         path = tmp_path / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"")
-    (tmp_path / "metadata.yaml").write_text(f"name: {NAME}\nversion: 0.0.5\n", encoding="utf-8")
+    (tmp_path / "metadata.yaml").write_text(
+        f"name: {NAME}\nversion: 0.0.5\n", encoding="utf-8"
+    )
     png = tmp_path / "assets" / "noto_emoji" / "png" / EMOJI_FILE
     png.parent.mkdir(parents=True, exist_ok=True)
     png.write_bytes(EMOJI_BYTES)

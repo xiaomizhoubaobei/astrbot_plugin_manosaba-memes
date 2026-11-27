@@ -1,23 +1,43 @@
 import hashlib
-from io import BytesIO
 import json
+from io import BytesIO
 from pathlib import Path
 
-from PIL import Image, ImageChops
 import pytest
-
 from astrbot_plugin_manosaba_memes import emoji_renderer as er
 from astrbot_plugin_manosaba_memes.drawer import draw_anan, draw_trial
 from astrbot_plugin_manosaba_memes.models import Character, Option, Statement
+from PIL import Image, ImageChops
 
 ROOT = Path(__file__).resolve().parents[1]
 FONT = str(ROOT / "assets/fonts/SourceHanSansSC-Bold.otf")
 
 
-@pytest.mark.parametrize("emoji", [
-    "🐖", "😀", "😭", "🥰", "❤️", "❤", "👍🏻", "👍🏿", "🇨🇳", "🇺🇸", "🇧🇻",
-    "👨‍👩‍👧‍👦", "👩🏽‍💻", "🏳️‍🌈", "1️⃣", "1⃣", "#️⃣", "🙅🏻‍♀️", "🤷🏿", "🧮",
-])
+@pytest.mark.parametrize(
+    "emoji",
+    [
+        "🐖",
+        "😀",
+        "😭",
+        "🥰",
+        "❤️",
+        "❤",
+        "👍🏻",
+        "👍🏿",
+        "🇨🇳",
+        "🇺🇸",
+        "🇧🇻",
+        "👨‍👩‍👧‍👦",
+        "👩🏽‍💻",
+        "🏳️‍🌈",
+        "1️⃣",
+        "1⃣",
+        "#️⃣",
+        "🙅🏻‍♀️",
+        "🤷🏿",
+        "🧮",
+    ],
+)
 def test_sequences_are_one_image(emoji):
     tokens = er.tokenize(emoji)
     assert len(tokens) == 1
@@ -40,7 +60,15 @@ def test_variation_and_flag_aliases():
 
 def test_highlight_and_newlines_preserved():
     tokens = er.tokenize("a【好🐖】b\r\n[❤️]c")
-    assert [t.text for t in tokens if t.highlighted] == ["【", "好", "🐖", "】", "[", "❤️", "]"]
+    assert [t.text for t in tokens if t.highlighted] == [
+        "【",
+        "好",
+        "🐖",
+        "】",
+        "[",
+        "❤️",
+        "]",
+    ]
     assert sum(t.text == "\n" for t in tokens) == 1
 
 
@@ -73,10 +101,18 @@ def test_all_indexed_emoji_sequences_tokenize_without_splitting():
         assert len(tokens) == 1 and tokens[0].asset == expected, key
 
 
-@pytest.mark.parametrize("text", [
-    "我喜欢你🐖", "🐖❤️👍🏻\n🇨🇳👨‍👩‍👧‍👦1️⃣", "今天【开心🥰】", "🐖‍🐖",
-    "混排Ab🐖❤️👍🏻" * 20, "🐖\n\n👍🏻", "😃" * 100,
-])
+@pytest.mark.parametrize(
+    "text",
+    [
+        "我喜欢你🐖",
+        "🐖❤️👍🏻\n🇨🇳👨‍👩‍👧‍👦1️⃣",
+        "今天【开心🥰】",
+        "🐖‍🐖",
+        "混排Ab🐖❤️👍🏻" * 20,
+        "🐖\n\n👍🏻",
+        "😃" * 100,
+    ],
+)
 def test_mixed_layout_is_inside_region(text):
     image = er.render_mixed(text, FONT, 319, 204, max_font_size=60)
     assert image.size == (319, 204)
@@ -102,14 +138,18 @@ def test_emoji_pixels_really_come_from_pig_image():
     result = er.render_mixed("🐖", FONT, 100, 100, max_font_size=60)
     with Image.open(er.ASSET_ROOT / "png/emoji_u1f416.png") as pig:
         expected = Image.new("RGBA", (100, 100))
-        expected.alpha_composite(pig.convert("RGBA").resize((60, 60), Image.Resampling.LANCZOS), (20, 20))
+        expected.alpha_composite(
+            pig.convert("RGBA").resize((60, 60), Image.Resampling.LANCZOS), (20, 20)
+        )
     assert result.tobytes() == expected.tobytes()
 
 
 @pytest.mark.parametrize("face", [None, "开心", "生气", "害羞", "无语", "病娇"])
 def test_anan_emoji_render_leaves_artwork_untouched(face):
     image = Image.open(BytesIO(draw_anan("我喜欢你🐖", face))).convert("RGBA")
-    with Image.open(ROOT / "assets/anan" / (f"{face}.png" if face else "base.png")) as base:
+    with Image.open(
+        ROOT / "assets/anan" / (f"{face}.png" if face else "base.png")
+    ) as base:
         expected = base.convert("RGBA")
     with Image.open(ROOT / "assets/anan/base_overlay.png") as overlay:
         expected.alpha_composite(overlay.convert("RGBA"))
@@ -122,9 +162,11 @@ def test_anan_emoji_render_leaves_artwork_untouched(face):
 
 @pytest.mark.parametrize("character", list(Character))
 def test_trial_mixed_real_render(character):
-    options = [Option(Statement.AGREEMENT, "我喜欢你🐖"),
-               Option(Statement.DOUBT, "【开心🥰】❤️👍🏻🇨🇳"),
-               Option(Statement.PERJURY, "一家人👨‍👩‍👧‍👦\n数字1️⃣")]
+    options = [
+        Option(Statement.AGREEMENT, "我喜欢你🐖"),
+        Option(Statement.DOUBT, "【开心🥰】❤️👍🏻🇨🇳"),
+        Option(Statement.PERJURY, "一家人👨‍👩‍👧‍👦\n数字1️⃣"),
+    ]
     with Image.open(BytesIO(draw_trial(character, options))) as image:
         image.load()
         assert image.size == (1260, 1080)

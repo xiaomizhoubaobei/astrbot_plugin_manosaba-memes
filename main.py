@@ -9,10 +9,10 @@ from astrbot.api.event import AstrMessageEvent, filter
 from astrbot.api.message_components import Image
 from astrbot.api.star import Context, Star, StarTools
 
-from .models import Character
-from .drawer import draw_anan, draw_trial
-from .utils import get_character, parse_anan, parse_trial, TRIAL_TRIGGER
 from .constants import OPTIONS_PER_PAGE
+from .drawer import draw_anan, draw_trial
+from .models import Character
+from .utils import TRIAL_TRIGGER, get_character, parse_anan, parse_trial
 
 
 class ManosabaMemesPlugin(Star):
@@ -35,18 +35,24 @@ class ManosabaMemesPlugin(Star):
     @staticmethod
     def _preference_key(event: AstrMessageEvent) -> str:
         # JSON avoids ambiguous separators in platform/session/user identifiers.
-        return json.dumps([event.unified_msg_origin, event.get_sender_id()], ensure_ascii=False)
+        return json.dumps(
+            [event.unified_msg_origin, event.get_sender_id()], ensure_ascii=False
+        )
 
     def _character_for(self, event: AstrMessageEvent) -> Character:
         key = self._preference_key(event)
         # Read legacy session-wide settings until this user makes a new choice.
-        return self.character_map.get(key, self.character_map.get(event.get_session_id(), Character.EMA))
+        return self.character_map.get(
+            key, self.character_map.get(event.get_session_id(), Character.EMA)
+        )
 
     async def _load_character_preferences(self):
         if self.data_file is None or not self.data_file.exists():
             return
         try:
-            content = await asyncio.to_thread(self.data_file.read_text, encoding="utf-8")
+            content = await asyncio.to_thread(
+                self.data_file.read_text, encoding="utf-8"
+            )
             data = json.loads(content)
             if not isinstance(data, dict):
                 raise ValueError("角色偏好文件应为 JSON 对象")
@@ -67,8 +73,12 @@ class ManosabaMemesPlugin(Star):
         temp_path = None
         try:
             with tempfile.NamedTemporaryFile(
-                mode="w", encoding="utf-8", dir=self.data_file.parent,
-                prefix="character_preferences-", suffix=".tmp", delete=False,
+                mode="w",
+                encoding="utf-8",
+                dir=self.data_file.parent,
+                prefix="character_preferences-",
+                suffix=".tmp",
+                delete=False,
             ) as stream:
                 temp_path = Path(stream.name)
                 json.dump(data, stream, ensure_ascii=False, indent=2)
@@ -120,7 +130,9 @@ class ManosabaMemesPlugin(Star):
             async with self._render_lock:
                 for offset in range(0, len(options), OPTIONS_PER_PAGE):
                     data = await asyncio.to_thread(
-                        draw_trial, character, options[offset:offset + OPTIONS_PER_PAGE]
+                        draw_trial,
+                        character,
+                        options[offset : offset + OPTIONS_PER_PAGE],
                     )
                     chain.append(Image.fromBytes(data))
         except Exception:
@@ -148,7 +160,9 @@ class ManosabaMemesPlugin(Star):
                 self.character_map[self._preference_key(event)] = character
         except Exception:
             logger.exception("保存角色偏好失败")
-            yield event.plain_result("角色切换失败：无法保存偏好，请检查插件数据目录权限")
+            yield event.plain_result(
+                "角色切换失败：无法保存偏好，请检查插件数据目录权限"
+            )
             return
         name = "艾玛" if character == Character.EMA else "希罗"
         yield event.plain_result(f"已切换角色为 {name}（仅当前会话中的你生效，已保存）")
