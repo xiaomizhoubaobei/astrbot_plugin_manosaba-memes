@@ -12,6 +12,7 @@
 ![Python Version](https://img.shields.io/badge/Python-3.12+-blue.svg)
 ![Maintenance](https://img.shields.io/badge/Maintained%3F-yes-green.svg)
 ![Status](https://img.shields.io/badge/status-active-success.svg)
+![Language](https://commit.cool/badge/language/cnb/feedback)
 [![Repo Size](https://img.shields.io/github/repo-size/xiaomizhoubaobei/astrbot_plugin_manosaba-memes.svg)](https://github.com/xiaomizhoubaobei/astrbot_plugin_manosaba-memes)
 
 生成「魔法少女的魔法审判」相关表情包的 AstrBot 插件。
