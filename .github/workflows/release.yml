@@ -76,9 +76,10 @@ jobs:
           PLUGIN_NAME=$(grep -E "^name:[[:space:]]*" "$META_FILE" | head -n 1 | sed -E 's/^name:[[:space:]]*//; s/[[:space:]]+.*$//')
 
           # ── 白名单严格校验 ──────────────────────────────────────────────
-          # 这两个值后续会用于 mkdir / zip / Release 资源名等位置；metadata.yaml
-          # 属于不可信输入，任何 shell 元字符（$ ` ; | & ( ) 空格 换行等）都
-          # 必须在源头拒绝，否则会在 contents: write 的发布作业中造成命令注入。
+          # PLUGIN_NAME 后续用于构建入口 --output 参数与 Release 资源名；
+          # metadata.yaml 属于不可信输入，任何 shell 元字符（$ ` ; | & ( ) 空格
+          # 换行等）都必须在源头拒绝，否则会在 contents: write 的发布作业中
+          # 造成命令注入。打包本身由 build_release.py 统一完成，不再逐条 cp/zip。
           if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+(\.[0-9]+){1,3}(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then
             echo "::error::metadata.yaml 中的 version 非法（仅允许 SemVer，例如 1.2.3）：'${VERSION}'"
             exit 1

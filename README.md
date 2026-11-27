@@ -131,15 +131,16 @@
 python build_release.py --output dist/astrbot_plugin_manosaba_memes.zip
 ```
 
-在独立环境中安装运行依赖和测试依赖后执行回归测试：
+在独立环境中安装开发与测试依赖后执行测试与覆盖率报告：
 
 ```shell
-python -m pip install -r requirements.txt pytest PyYAML
-python -m pytest -q
+python -m pip install -r requirements-dev.txt
+python -m tests.run_coverage
 ```
 
-测试真实调用 sketchbook/Pillow 绘图，AstrBot 事件和消息组件使用接口替身；
-测试覆盖角色偏好、分页、输入校验、图片结果生命周期、emoji 混排及 Windows 字体文件释放。
+也可直接用 `python -m pytest -q` 跑全部用例。测试真实调用 sketchbook/Pillow 绘图，
+AstrBot 事件和消息组件使用接口替身；覆盖角色偏好、分页、输入校验、图片结果生命周期、
+emoji 混排、发布包完整性（`tests/test_build_release.py`）及 Windows 字体文件释放。
 这些测试不替代 AstrBot 平台适配器的真实消息发送测试。
 
 ## Noto 2D emoji
