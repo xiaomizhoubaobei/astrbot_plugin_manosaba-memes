@@ -27,12 +27,12 @@ The assets provided in the repo are all those used to build the NotoColorEmoji f
 
 ## License
 
-Emoji fonts (under the fonts subdirectory) are under the
-[SIL Open Font License, version 1.1](fonts/LICENSE).<br/>
-Tools and most image resources are under the [Apache license, version 2.0](./LICENSE).
-Flag images under third_party/region-flags are in the public domain or
-otherwise exempt from copyright ([more info](third_party/region-flags/LICENSE)).
+This package contains PNG images only; no Noto fonts are bundled.
+Bundled PNG images are under the [Apache License 2.0](LICENSE-APACHE-2.0.txt);
+image attribution is in [LICENSE-IMAGES.txt](LICENSE-IMAGES.txt).
+Regional flag images are covered by [LICENSE-FLAGS.txt](LICENSE-FLAGS.txt).
+See [NOTICE.txt](NOTICE.txt) for provenance details.
 
 ## Contributing
 
-Please read [CONTRIBUTING](CONTRIBUTING.md) if you are thinking of contributing to this project.
+Please read [CONTRIBUTING](../../CONTRIBUTING.md) if you are thinking of contributing to this project.

@@ -19,7 +19,7 @@ def build(output: Path | None = None) -> Path:
     name = match[1]
     if not name.isidentifier() or keyword.iskeyword(name):
         raise ValueError("metadata name 必须为合法 Python 模块名")
-    required = [ROOT / entry for entry in (*MODULES, "metadata.yaml", "requirements.txt", "LICENSE", "README.md", "CHANGELOG.md", "build_release.py")]
+    required = [ROOT / entry for entry in (*MODULES, "metadata.yaml", "requirements.txt", "LICENSE", "README.md", "CHANGELOG.md", "build_release.py", "logo.png")]
     required += [ROOT / "assets" / entry for entry in (
         "anan/base.png", "anan/base_overlay.png", "trial/black.png",
         "trial/background.png", "trial/ema.png", "trial/hiro.png", "trial/option.png",
