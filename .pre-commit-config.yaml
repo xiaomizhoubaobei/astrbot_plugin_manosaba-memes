@@ -75,4 +75,6 @@ repos:
     # 给本仓库加一道无人维护的噪声门禁。
     # E0401/E0402 关闭：依赖（aiohttp）与宿主（astrbot.*）不在本机安装，
     # 且 src/ 从仓库根被当作普通目录导入，pylint 会误报「相对导入越界」。
-    args: ['--disable=all', '--enable=E', '--disable=E0401,E0402', '--ignore=ai-audit', '--score=n']
+    # E0611/E1101/E1123 关闭：sketchbook-py 是带 .pyi 的 Rust 扩展，pylint 只看
+    # 编译后的 .so，会误报新 API 不存在及其构造参数非法。
+    args: ['--disable=all', '--enable=E', '--disable=E0401,E0402,E0611,E1101,E1123', '--ignore=ai-audit', '--score=n']

@@ -9,9 +9,8 @@
 import re
 from typing import Optional
 
-from .models import Character, Statement, Option
 from .constants import FACE_WHITELIST, MAX_ANAN_TEXT_LENGTH, MAX_OPTIONS_COUNT
-
+from .models import Character, Option, Statement
 
 # Compile flags into the pattern: AstrBot's regex decorator does not apply a
 # separate flags keyword to RegexFilter.
@@ -20,6 +19,7 @@ TRIAL_LINE = re.compile(r"【(疑问|反驳|伪证|赞同|魔法)(?:[:：]([^】
 
 
 def parse_anan(content: str) -> tuple[str, Optional[str]]:
+    """Parse an “Anan says” command into text and optional face name."""
     content = content.strip()
     parts = content.rsplit(None, 1)
     face = None
@@ -34,6 +34,7 @@ def parse_anan(content: str) -> tuple[str, Optional[str]]:
 
 
 def parse_trial(message: str) -> list[Option]:
+    """Parse a trial meme command into a list of options."""
     lines = [line.strip() for line in message.splitlines() if line.strip()]
     if not lines:
         raise ValueError("请至少输入一个选项")
@@ -43,7 +44,9 @@ def parse_trial(message: str) -> list[Option]:
     for index, line in enumerate(lines, 1):
         match = TRIAL_LINE.fullmatch(line)
         if not match:
-            raise ValueError(f"第 {index} 行格式错误，请使用：【疑问/反驳/伪证/赞同/魔法:角色名】文本")
+            raise ValueError(
+                f"第 {index} 行格式错误，请使用：【疑问/反驳/伪证/赞同/魔法:角色名】文本"
+            )
         statement, arg, text = match.groups()
         if arg is not None and statement != "魔法":
             raise ValueError(f"第 {index} 行只有魔法类型需要指定角色名")

@@ -1,32 +1,39 @@
 """Offline Noto 2D emoji and text layout; no system emoji font dependency."""
+
+import json
+import math
 from dataclasses import dataclass
 from functools import lru_cache
 from io import BytesIO
-import json
-import math
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
 import regex
+from PIL import Image, ImageDraw, ImageFont
 
 ASSET_ROOT = Path(__file__).parent / "assets" / "noto_emoji"
 GRAPHEMES = regex.compile(r"\X")
-EMOJI = regex.compile(r"\p{Extended_Pictographic}|\p{Regional_Indicator}|\p{Emoji_Modifier}|\u20e3")
+EMOJI = regex.compile(
+    r"\p{Extended_Pictographic}|\p{Regional_Indicator}|\p{Emoji_Modifier}|\u20e3"
+)
 
 
 @dataclass(frozen=True)
 class Token:
+    """A text or emoji token with highlight metadata."""
+
     text: str
     asset: str | None = None
     highlighted: bool = False
 
 
 def has_emoji(text: str) -> bool:
+    """Return whether the text contains an emoji code point."""
     return EMOJI.search(text) is not None
 
 
 @lru_cache(maxsize=1)
 def asset_index() -> dict[str, str]:
+    """Load and cache the emoji sequence-to-asset index."""
     return json.loads((ASSET_ROOT / "index.json").read_text(encoding="utf-8"))
 
 
@@ -35,7 +42,9 @@ def tokenize(text: str) -> list[Token]:
     tokens = []
     closing = []
     index = asset_index()
-    for cluster in GRAPHEMES.findall(text.replace("\r\n", "\n").replace("\r", "\n").replace("\t", "    ")):
+    for cluster in GRAPHEMES.findall(
+        text.replace("\r\n", "\n").replace("\r", "\n").replace("\t", "    ")
+    ):
         if cluster in ("[", "【"):
             closing.append("]" if cluster == "[" else "】")
         highlighted = bool(closing)
@@ -73,6 +82,8 @@ def _emoji(filename: str):
 
 @dataclass
 class Placement:
+    """Layout result for one token on a text line."""
+
     token: Token
     width: float
     left_pad: float
@@ -82,6 +93,8 @@ class Placement:
 
 @dataclass
 class Line:
+    """A laid-out line of tokens and its metrics."""
+
     items: list[Placement]
     width: float = 0
     above: int = 0
@@ -89,6 +102,7 @@ class Line:
 
 
 def layout(tokens: list[Token], font_path: str, size: int, width: int):
+    """Lay tokens out into lines within the given pixel width."""
     font = _font(font_path, size)
     _, top, _, bottom = font.getbbox("国Ag", anchor="ls")
     lines = []
@@ -125,9 +139,16 @@ def layout(tokens: list[Token], font_path: str, size: int, width: int):
     return lines, height, spacing
 
 
-def render_mixed(text: str, font_path: str, width: int, height: int,
-                 color=(0, 0, 0, 255), bracket_color=(128, 0, 128, 255),
-                 max_font_size: int = 128) -> Image.Image:
+def render_mixed(
+    text: str,
+    font_path: str,
+    width: int,
+    height: int,
+    color=(0, 0, 0, 255),
+    bracket_color=(128, 0, 128, 255),
+    max_font_size: int = 128,
+) -> Image.Image:
+    """Render text with inline emoji into a transparent RGBA image."""
     tokens = tokenize(text)
     # A transparent margin protects antialiasing at the region boundary.
     available_width, available_height = width - 4, height - 4
@@ -135,8 +156,12 @@ def render_mixed(text: str, font_path: str, width: int, height: int,
     best = None
     while low <= high:
         size = (low + high) // 2
-        lines, content_height, spacing = layout(tokens, font_path, size, available_width)
-        if content_height <= available_height and all(line.width <= available_width for line in lines):
+        lines, content_height, spacing = layout(
+            tokens, font_path, size, available_width
+        )
+        if content_height <= available_height and all(
+            line.width <= available_width for line in lines
+        ):
             best = size, lines, content_height, spacing
             low = size + 1
         else:
@@ -159,9 +184,13 @@ def render_mixed(text: str, font_path: str, width: int, height: int,
                 emoji = source.resize((size, size), Image.Resampling.LANCZOS)
                 canvas.alpha_composite(emoji, (math.floor(x), baseline - item.above))
             else:
-                pen.text((x + item.left_pad, baseline), item.token.text,
-                         font=font, anchor="ls",
-                         fill=bracket_color if item.token.highlighted else color)
+                pen.text(
+                    (x + item.left_pad, baseline),
+                    item.token.text,
+                    font=font,
+                    anchor="ls",
+                    fill=bracket_color if item.token.highlighted else color,
+                )
             x += item.width
         y += line.above + line.below + spacing
     return canvas

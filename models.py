@@ -90,9 +90,7 @@ class Option:
         # 验证 text 长度
         text_stripped = self.text.strip()
         if len(text_stripped) > MAX_OPTION_TEXT_LENGTH:
-            raise ValueError(
-                f"每个选项的文本最多支持 {MAX_OPTION_TEXT_LENGTH} 个字符"
-            )
+            raise ValueError(f"每个选项的文本最多支持 {MAX_OPTION_TEXT_LENGTH} 个字符")
 
         # 自动去除首尾空格
         self.text = text_stripped

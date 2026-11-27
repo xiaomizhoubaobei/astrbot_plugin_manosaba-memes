@@ -45,7 +45,9 @@ def test_draw_anan_returns_bytes() -> None:
     assert result.startswith(b"\x89PNG")
     # 真实渲染结果是合法 PNG，可用 Pillow 打开
     from io import BytesIO
+
     from PIL import Image
+
     with Image.open(BytesIO(result)) as image:
         image.load()
 
@@ -108,7 +110,9 @@ def _options(count: int) -> list[Option]:
 def test_draw_trial_by_character(character: Character) -> None:
     result = draw_trial(character, _options(2))
     from io import BytesIO
+
     from PIL import Image
+
     with Image.open(BytesIO(result)) as image:
         image.load()
         assert image.size == (1260, 1080)
