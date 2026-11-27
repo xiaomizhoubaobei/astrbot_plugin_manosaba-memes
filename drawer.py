@@ -1,17 +1,15 @@
-from pathlib import Path
 from io import BytesIO
+from pathlib import Path
 from typing import List, Optional, Tuple
 
 from PIL import Image
-
 from sketchbook import Drawer  # type: ignore
-from sketchbook import DrawerRegion  # type: ignore
-from sketchbook import PasteStyle  # type: ignore
-from sketchbook import TextFitDrawer  # type: ignore
+from sketchbook import FontSet  # type: ignore
+from sketchbook import Layer  # type: ignore
+from sketchbook import ParseRule  # type: ignore
+from sketchbook import Region  # type: ignore
 from sketchbook import TextStyle  # type: ignore
 
-from .models import Character, Option, Statement
-from .emoji_renderer import has_emoji, render_mixed
 from .constants import (
     ANAN_REGION_HEIGHT,
     ANAN_REGION_WIDTH,
@@ -19,6 +17,7 @@ from .constants import (
     ANAN_REGION_Y,
     BRACKET_COLOR,
     FACE_WHITELIST,
+    MAX_ANAN_TEXT_LENGTH,
     MAX_FONT_HEIGHT,
     MAX_OPTIONS_COUNT,
     OPTION_END_Y,
@@ -27,7 +26,6 @@ from .constants import (
     OPTION_START_Y,
     OPTION_WIDTH,
     OPTIONS_PER_PAGE,
-    MAX_ANAN_TEXT_LENGTH,
     STATEMENT_ICON_HEIGHT,
     STATEMENT_ICON_WIDTH,
     STATEMENT_OFFSET_X,
@@ -40,9 +38,23 @@ from .constants import (
     TRIAL_IMAGE_HEIGHT,
     TRIAL_IMAGE_WIDTH,
 )
+from .emoji_renderer import has_emoji, render_mixed
 from .models import Character, Option, Statement
 
 PLUGIN_PATH = Path(__file__).parent
+
+
+def _text_style(max_font_size: Optional[int] = None) -> TextStyle:
+    """Build a sketchbook 1.x text style matching the legacy bracket highlight."""
+    return TextStyle(
+        color=TEXT_COLOR,
+        max_font_size=max_font_size,
+        antialias=False,
+        parse_rules=[
+            ParseRule.cn_bracket(BRACKET_COLOR),
+            ParseRule.bracket(BRACKET_COLOR),
+        ],
+    )
 
 
 def get_anan_base_image(face: Optional[str] = None) -> str:
@@ -88,12 +100,16 @@ def draw_anan(text: str, face: Optional[str] = None) -> bytes:
         raise ValueError("请输入要写在素描本上的文本")
     if len(text) > MAX_ANAN_TEXT_LENGTH:
         raise ValueError(f"安安说文本最多支持 {MAX_ANAN_TEXT_LENGTH} 个字符")
+    font = str(PLUGIN_PATH / "assets/fonts/SourceHanSansSC-Bold.otf")
     if has_emoji(text):
         with Image.open(get_anan_base_image(face)) as source:
             canvas = source.convert("RGBA")
         lettering = render_mixed(
-            text, str(PLUGIN_PATH / "assets/fonts/SourceHanSansSC-Bold.otf"),
-            ANAN_REGION_WIDTH, ANAN_REGION_HEIGHT, max_font_size=60,
+            text,
+            font,
+            ANAN_REGION_WIDTH,
+            ANAN_REGION_HEIGHT,
+            max_font_size=60,
         )
         canvas.alpha_composite(lettering, (ANAN_REGION_X, ANAN_REGION_Y))
         with Image.open(PLUGIN_PATH / "assets/anan/base_overlay.png") as overlay:
@@ -101,22 +117,28 @@ def draw_anan(text: str, face: Optional[str] = None) -> bytes:
         result = BytesIO()
         canvas.save(result, format="PNG")
         return result.getvalue()
-    drawer = TextFitDrawer(
-        base_image=get_anan_base_image(face),
-        font=str(PLUGIN_PATH / "assets/fonts/SourceHanSansSC-Bold.otf"),
-        overlay_image=str(PLUGIN_PATH / "assets/anan/base_overlay.png"),
-        region=DrawerRegion(
-            ANAN_REGION_X,
-            ANAN_REGION_Y,
-            ANAN_REGION_X + ANAN_REGION_WIDTH,
-            ANAN_REGION_Y + ANAN_REGION_HEIGHT,
-        ),
+
+    fonts = FontSet(font)
+    drawer = Drawer.from_image(get_anan_base_image(face), fonts)
+    drawer.layer(
+        Layer("overlay").image_fit(
+            str(PLUGIN_PATH / "assets/anan/base_overlay.png"),
+            Region(0, 0, drawer.size[0], drawer.size[1]),
+        )
     )
-    image_bytes = drawer.draw(
-        text=text,
-        style=TextStyle(color=(0, 0, 0, 255)),
+    drawer.layer(
+        Layer("text").text(
+            text,
+            Region(
+                ANAN_REGION_X,
+                ANAN_REGION_Y,
+                ANAN_REGION_WIDTH,
+                ANAN_REGION_HEIGHT,
+            ),
+            _text_style(max_font_size=60),
+        )
     )
-    return image_bytes
+    return drawer.render()
 
 
 def get_statement_image(statement: Statement) -> str:
@@ -172,8 +194,9 @@ def get_option_coordinates(number: int) -> List[Tuple[int, int]]:
     total_height = number * OPTION_HEIGHT + (number - 1) * spacing
     center_y = (OPTION_START_Y + OPTION_END_Y) // 2
     start_y = center_y - total_height // 2
-    return [(OPTION_START_X, start_y + i * (OPTION_HEIGHT + spacing))
-            for i in range(number)]
+    return [
+        (OPTION_START_X, start_y + i * (OPTION_HEIGHT + spacing)) for i in range(number)
+    ]
 
 
 def draw_trial(character: Character, options: List[Option]) -> bytes:
@@ -192,78 +215,83 @@ def draw_trial(character: Character, options: List[Option]) -> bytes:
     # 前置校验：确保选项数量在合理范围内
     if len(options) > MAX_OPTIONS_COUNT:
         raise ValueError(f"选项数量过多，最多支持 {MAX_OPTIONS_COUNT} 个选项")
-
     if len(options) == 0:
         raise ValueError("选项数量不能为 0")
-    coordinates = get_option_coordinates(len(options))
     if not isinstance(character, Character):
         raise ValueError("无效的审判角色")
+    coordinates = get_option_coordinates(len(options))
 
-    # Background and character
-    drawer = Drawer(
-        base_image=str(PLUGIN_PATH / "assets/trial/black.png"),
-        font=str(PLUGIN_PATH / "assets/fonts/SourceHanSerifSC.otf"),
+    fonts = FontSet(str(PLUGIN_PATH / "assets/fonts/SourceHanSerifSC.otf"))
+    drawer = Drawer(TRIAL_IMAGE_WIDTH, TRIAL_IMAGE_HEIGHT, fonts)
+    drawer.base(str(PLUGIN_PATH / "assets/trial/black.png"))
+    drawer.layer(
+        Layer("background").image_fit(
+            str(PLUGIN_PATH / "assets/trial/background.png"),
+            Region(0, 0, TRIAL_IMAGE_WIDTH, TRIAL_IMAGE_HEIGHT),
+        )
     )
-    drawer = drawer.paste_image(
-        str(PLUGIN_PATH / "assets/trial/background.png"),
-        region=DrawerRegion(0, 0, TRIAL_IMAGE_WIDTH, TRIAL_IMAGE_HEIGHT),
-        style=PasteStyle(keep_alpha=False),
-    ).paste_image(
-        str(
-            PLUGIN_PATH
-            / "assets/trial"
-            / ("ema.png" if character == Character.EMA else "hiro.png")
-        ),
-        region=DrawerRegion(667, 0, TRIAL_IMAGE_WIDTH, TRIAL_IMAGE_HEIGHT),
-        style=PasteStyle(keep_alpha=False),
+    drawer.layer(
+        Layer("character").image_fit(
+            str(
+                PLUGIN_PATH
+                / "assets/trial"
+                / ("ema.png" if character == Character.EMA else "hiro.png")
+            ),
+            Region(667, 0, TRIAL_IMAGE_WIDTH - 667, TRIAL_IMAGE_HEIGHT),
+        )
     )
 
     # Keep the original renderer for plain text. Emoji text is composited in
     # its bounded region after the scene, without touching character artwork.
     emoji_regions = []
-    for option, (x, y) in zip(options, coordinates):
-        drawer = drawer.paste_image(
+    for index, (option, (x, y)) in enumerate(zip(options, coordinates)):
+        drawer.layer(
+            Layer(f"option-{index}").image_fit(
                 str(PLUGIN_PATH / "assets/trial/option.png"),
-                region=DrawerRegion(x, y, x + OPTION_WIDTH, y + OPTION_HEIGHT),
-                style=PasteStyle(keep_alpha=False),
+                Region(x, y, OPTION_WIDTH, OPTION_HEIGHT),
             )
+        )
         if has_emoji(option.text):
             emoji_regions.append((option.text, x + TEXT_OFFSET_X, y + TEXT_OFFSET_Y))
         else:
-            drawer = drawer.draw_text(
-                text=option.text,
-                region=DrawerRegion(
-                    x + TEXT_OFFSET_X,
-                    y + TEXT_OFFSET_Y,
-                    x + TEXT_OFFSET_X + TEXT_WIDTH,
-                    y + TEXT_OFFSET_Y + TEXT_HEIGHT,
-                ),
-                style=TextStyle(
-                    color=TEXT_COLOR,
-                    bracket_color=BRACKET_COLOR,
-                    max_font_height=MAX_FONT_HEIGHT,
-                ),
+            drawer.layer(
+                Layer(f"text-{index}").text(
+                    option.text,
+                    Region(
+                        x + TEXT_OFFSET_X,
+                        y + TEXT_OFFSET_Y,
+                        TEXT_WIDTH,
+                        TEXT_HEIGHT,
+                    ),
+                    _text_style(max_font_size=MAX_FONT_HEIGHT),
+                )
             )
-        drawer = drawer.paste_image(
+        drawer.layer(
+            Layer(f"statement-{index}").image_fit(
                 get_statement_image(option.statement),
-                region=DrawerRegion(
+                Region(
                     x + STATEMENT_OFFSET_X,
                     y + STATEMENT_OFFSET_Y,
-                    x + STATEMENT_OFFSET_X + STATEMENT_ICON_WIDTH,
-                    y + STATEMENT_OFFSET_Y + STATEMENT_ICON_HEIGHT,
+                    STATEMENT_ICON_WIDTH,
+                    STATEMENT_ICON_HEIGHT,
                 ),
-                style=PasteStyle(keep_alpha=False),
             )
-    result = drawer.finish()
+        )
+
+    result = drawer.render()
     if not emoji_regions:
         return result
     with Image.open(BytesIO(result)) as source:
         canvas = source.convert("RGBA")
     for text, x, y in emoji_regions:
         lettering = render_mixed(
-            text, str(PLUGIN_PATH / "assets/fonts/SourceHanSerifSC.otf"),
-            TEXT_WIDTH, TEXT_HEIGHT, color=TEXT_COLOR,
-            bracket_color=BRACKET_COLOR, max_font_size=MAX_FONT_HEIGHT,
+            text,
+            str(PLUGIN_PATH / "assets/fonts/SourceHanSerifSC.otf"),
+            TEXT_WIDTH,
+            TEXT_HEIGHT,
+            color=TEXT_COLOR,
+            bracket_color=BRACKET_COLOR,
+            max_font_size=MAX_FONT_HEIGHT,
         )
         canvas.alpha_composite(lettering, (x, y))
     output = BytesIO()
