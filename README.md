@@ -15,6 +15,8 @@
 [![Language](https://commit.cool/badge/language/XMZZUZHI/Astrbot/astrbot_plugin_manosaba-memes)](https://github.com/xiaomizhoubaobei/astrbot_plugin_manosaba-memes)
 [![Repo Size](https://img.shields.io/github/repo-size/xiaomizhoubaobei/astrbot_plugin_manosaba-memes.svg)](https://github.com/xiaomizhoubaobei/astrbot_plugin_manosaba-memes)
 [![Repo Age](https://commit.cool/badge/age/XMZZUZHI/Astrbot/astrbot_plugin_manosaba-memes)](https://cnb.cool/XMZZUZHI/Astrbot/astrbot_plugin_manosaba-memes)
+[![Issue Close Rate](https://commit.cool/badge/issues/close_rate/XMZZUZHI/Astrbot/astrbot_plugin_manosaba-memes)](https://cnb.cool/XMZZUZHI/Astrbot/astrbot_plugin_manosaba-memes)
+[![PR Merge Rate](https://commit.cool/badge/pull/merge_rate/XMZZUZHI/Astrbot/astrbot_plugin_manosaba-memes)](https://cnb.cool/XMZZUZHI/Astrbot/astrbot_plugin_manosaba-memes)
 
 生成「魔法少女的魔法审判」相关表情包的 AstrBot 插件。
 
